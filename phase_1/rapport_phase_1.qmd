@@ -42,7 +42,7 @@ using OptimizationProblems, OptimizationProblems.ADNLPProblems
 
 ```{julia}
 
-function lbfgs_trust_region(nlp, eps_a=1.0e-5, eps_r=1.0e-5, mem=5, max_iter_ratio=10)
+function lbfgs_trust_region(nlp; eps_a=1.0e-5, eps_r=1.0e-5, mem=5, max_iter_ratio=10)
     
     xk = nlp.meta.x0
     dim = length(xk)
@@ -65,16 +65,17 @@ function lbfgs_trust_region(nlp, eps_a=1.0e-5, eps_r=1.0e-5, mem=5, max_iter_rat
     yk = similar(gk)
 
     # Hk = I(dim)
-    Hk = LBFGSOperator(dim, mem = mem, scaling = false)  # par défaut, mem = 5
+    Hk = InverseLBFGSOperator(dim, mem = mem, scaling = true)  # par défaut, mem = 5
     
     max_iter = max_iter_ratio*dim
 
     for k in 1:max_iter
 
         # compute search direction using Hessian approx
-        pk .= Hk*gk
+        pk .= -Hk*gk
 
         # compute step size using exact line search (for quad obj)
+        # TODO: use Cauchy point?
         alphak = -dot(gk, pk)/dot(pk, Hk*pk)
 
         sk .= alphak*pk
@@ -115,17 +116,18 @@ function lbfgs_trust_region(nlp, eps_a=1.0e-5, eps_r=1.0e-5, mem=5, max_iter_rat
         end
 
         # increase / decrease trust region radius
-        if rho >= 0.99
+        if rho >= 0.75
             deltak *= 3
-        elseif rho < 1e-4
+        elseif rho < 0.25
             deltak /= 3
         end
 
         # print optimization status
-        @printf("|  k = %3d  |  grad_norm = %10.3e  |  fx = %10.3e  |  rho= %10.3e  |  deltak= %10.3e \n", k, grad_norm, fk, rho, deltak)
+        @printf("|  k = %3d  |  grad_norm = %10.3e  |  fx = %10.3e  |  rho= %10.2f  |  deltak= %10.3e \n", k, grad_norm, fk, rho, deltak)
 
         # check convergence crieteria
         if grad_norm <= eps_a + eps_r*g0_norm
+            println("Convergence reached! ||gk|| = ", grad_norm)
             break
         end
 
@@ -149,10 +151,10 @@ problems = (OptimizationProblems.ADNLPProblems.eval(Meta.parse(problem))() for p
 ```{julia}
 models = []
 push!(models, OptimizationProblems.ADNLPProblems.chainwoo())
-# push!(models, OptimizationProblems.ADNLPProblems.errinros_mod())
-# push!(models, OptimizationProblems.ADNLPProblems.freuroth())
+push!(models, OptimizationProblems.ADNLPProblems.errinros_mod())
+push!(models, OptimizationProblems.ADNLPProblems.freuroth())
 
 # Validation of the modified newton method
-x_star = lbfgs_trust_region(models[1])
+x_star = lbfgs_trust_region(models[1], mem=5)
 
 ```
