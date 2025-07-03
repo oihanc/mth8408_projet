@@ -1,0 +1,158 @@
+---
+title: "Rapport de laboratoire 3"
+subtitle: "MTH8408"
+author:
+  - name: NAMES
+    email: EMAILS
+    affiliation:
+      - name: AFFILIATION
+format:
+  pdf:
+    keep-tex: false
+    documentclass: article
+    include-in-header:
+      - text: |
+            \usepackage{xspace}
+    geometry:
+      - margin=1in
+    papersize: letter
+    colorlinks: true
+    urlcolor: blue
+engine: julia
+---
+
+
+```{julia}
+#| output: false
+using Pkg
+Pkg.activate("projet_env")
+Pkg.add("ADNLPModels")
+Pkg.add("NLPModels")
+Pkg.add("Krylov")
+Pkg.add("LinearOperators")
+
+Pkg.add("OptimizationProblems")  # collection + outils pour sélectionner les problèmes
+# TODO: add CUTest
+
+using LinearAlgebra, NLPModels , ADNLPModels, Printf, Krylov, LinearOperators 
+
+using OptimizationProblems, OptimizationProblems.ADNLPProblems
+```
+
+
+```{julia}
+
+function lbfgs_trust_region(nlp, eps_a=1.0e-5, eps_r=1.0e-5, mem=5, max_iter_ratio=10)
+    
+    xk = nlp.meta.x0
+    dim = length(xk)
+
+    fk = obj(nlp, xk)
+
+    gk = grad(nlp, xk)
+    grad_norm = norm(gk)
+
+    # grad0 = deepcopy(grad)
+    g0_norm = grad_norm
+    
+
+    # initial trust region radius
+    deltak = 1.0
+
+    pk = similar(gk)
+    sk = similar(gk)
+    gk_new = similar(gk)
+    yk = similar(gk)
+
+    # Hk = I(dim)
+    Hk = LBFGSOperator(dim, mem = mem, scaling = false)  # par défaut, mem = 5
+    
+    max_iter = max_iter_ratio*dim
+
+    for k in 1:max_iter
+
+        # compute search direction using Hessian approx
+        pk .= Hk*gk
+
+        # compute step size using exact line search (for quad obj)
+        alphak = -dot(gk, pk)/dot(pk, Hk*pk)
+
+        sk .= alphak*pk
+        
+        # clip step size to trust region radius
+        sk_norm = norm(sk)
+        if sk_norm > deltak
+            sk .= sk/sk_norm*deltak
+        end
+
+        # predicted objective reduction
+        red_pred = -dot(gk, sk)
+
+        x_new = xk .+ sk
+        f_new = obj(nlp, x_new)
+        
+        # actual obj reduction
+        red_act = fk - f_new
+
+        # actual obj reduction to predicted obj red ratio
+        rho = red_act / red_pred
+
+        # if reduction is greater than tolerance, accept step size. Otherwise,
+        # reject step size
+        if rho >= 1e-4
+            # update new point
+            xk .= x_new
+            fk = f_new
+
+            gk_new .= grad(nlp, xk)
+            yk .= gk_new .- gk
+            
+            # update Hessian approximation
+            push!(Hk, sk, yk)
+
+            gk .= gk_new
+            grad_norm = norm(gk)
+        end
+
+        # increase / decrease trust region radius
+        if rho >= 0.99
+            deltak *= 3
+        elseif rho < 1e-4
+            deltak /= 3
+        end
+
+        # print optimization status
+        @printf("|  k = %3d  |  grad_norm = %10.3e  |  fx = %10.3e  |  rho= %10.3e  |  deltak= %10.3e \n", k, grad_norm, fk, rho, deltak)
+
+        # check convergence crieteria
+        if grad_norm <= eps_a + eps_r*g0_norm
+            break
+        end
+
+    end
+
+    return xk
+
+end
+
+```
+
+
+```{julia}
+#| output: false
+meta = OptimizationProblems.meta
+problem_list = meta[(meta.ncon.==0).&.!meta.has_bounds.&(meta.nvar.==100), :name]
+problems = (OptimizationProblems.ADNLPProblems.eval(Meta.parse(problem))() for problem ∈ problem_list)
+```
+
+
+```{julia}
+models = []
+push!(models, OptimizationProblems.ADNLPProblems.chainwoo())
+# push!(models, OptimizationProblems.ADNLPProblems.errinros_mod())
+# push!(models, OptimizationProblems.ADNLPProblems.freuroth())
+
+# Validation of the modified newton method
+x_star = lbfgs_trust_region(models[1])
+
+```
