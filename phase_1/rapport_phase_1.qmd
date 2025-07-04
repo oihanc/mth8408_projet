@@ -22,6 +22,29 @@ engine: julia
 ---
 
 
+## Problématique
+Dans la cadre des algorithmes de résolution de problème d'optimisation en tennant compte de l'information de second ordre sous région de confiance, il y a toujours des problèmes quadratiques à résoudre. La méthode la plus utilisée et le gradient conjugé. Il existe des méthodes qui approxime la hessienne et sont connues sous le nom de méthodes quasi-newton. Une des plus utilisée est la méthode LBFGS. Il est connue que la méthode CG souffre en orthogonalisation. Pour cela qu'il serait intéressant d'explorer d'autres méthodes plus stable, notamment LBFGS. 
+
+## Objectifs
+Dans ce projet, le but sera de comparer la méthode CG et la méthode LBFGS dans le cadre de résolutions de problèmes quadratiques. Les objectifs suivant ont été identifiés :
+
+1. Implémentation optimisée des algorithmes LBFGS pour le cas quadratique et newton inexcat.
+2. Compréhension théorique des résultats entre quasi-newton, notamment LBFGS et gradient congué
+3. Comparaison numérique entre les CG et LBFGS sur les banques de problèmes Optimization Problems et CUTest et étudier la relation entre re-orthogonalisation dans CG (le nombre de vecteurs à re-orthogonalisés) et la mémoire dans LBFGS
+4. Validation théorique de la relation entre re-orthogonalisation dans CG et la mémoire dans LBFGS (si le temps le permet)
+
+## Plan d'action
+
+rapport + brouillon du papier, Nocedal, notes de cours
+
+pour les problemes 
+
+## Impact attendu
+Ce travail peut mener à trouver la relation entre LBFGS et CG avec reorthogonalisation numériquement et théoriquement.
+
+## Résultats préliminaires
+La présente section présente une implémentation préliminaire de méthode de newton inexacte avec région de confiance qui utilise le CG ou LBFGS pour résoudre le sous-problème quadratique. 
+
 ```{julia}
 #| output: false
 using Pkg
@@ -31,39 +54,134 @@ Pkg.add("NLPModels")
 Pkg.add("Krylov")
 Pkg.add("LinearOperators")
 
+Pkg.add("Plots")
+
 Pkg.add("OptimizationProblems")  # collection + outils pour sélectionner les problèmes
 # TODO: add CUTest
 
 using LinearAlgebra, NLPModels , ADNLPModels, Printf, Krylov, LinearOperators 
 
 using OptimizationProblems, OptimizationProblems.ADNLPProblems
+
+using Plots
 ```
 
 
+### Implémentation préliminaire de la méthode LBFGS pour résoudre le sous-problème quadratique sous région de confiance
+Il s'agit d'une première implémentation qui requiert encore des optimisations. Cette méthode provient du rapport [CITATION]. 
+
+Cette implémentation propose une manière pour éviter les courbures négatives, tel que : $d_k^T A d_k < 0$, alors le pas sera calculé de tel sorte qu'il sortira de la région de confiance, auqu'elle sera appliqué un re-dimensionnement pour rester à l'intérieur de confiance. Si l'itéré courant sort du rayon de confiance, alors la direction est mise à l'échelle par un scalaire $\tau$ de tel que sorte que l'itéré sera dans la région de confiance.
+
 ```{julia}
 
-function newton_inexact_trust_region(model, eps_a=1.0e-5, eps_r=1.0e-5, mem=5, max_iter_ratio=10)
+# Reference: https://www.gerad.ca/fr/papers/G-2019-64
+function lbfgs(Bj, gk, delta; atol=1e-5, rtol=1e-5, mem = 5, max_iter = 10)
+
+    dim = length(gk)
+
+    gnorm0 = norm(gk)
+
+    k = 1
+    pk = zeros(dim)
+
+    # TODO: scaling should be an argument
+    Hk = InverseLBFGSOperator(dim, mem = mem, scaling = true)
+
+    # TODO: review the use of norm(gk) here
+    while norm(gk) > atol + rtol * gnorm0 && k <= max_iter
+
+        dk = -Hk*gk
+
+        # TODO: review if there is a more efficient way of computing Bj*dk
+        bk =  Bj*dk
+
+        if dot(dk, bk) <= 0
+            alphak = -sign(dot(gk, dk))*2*delta/norm(dk)
+        else
+            alphak = -dot(gk, dk)/dot(dk, bk)
+        end
+
+        sk = alphak*dk
+        pk = pk + sk
+
+        if norm(pk) >= delta
+            pk = pk - sk
+            # TODO: optimize implementation
+            # compute eq (87) such that norm(pk + tau*sk) = delta (see reference)
+            tau = (-dot(pk, sk) + sqrt(dot(pk, sk)^2 + dot(sk, sk)*(delta^2 - dot(pk, pk))))/dot(sk, sk)
+
+            return pk + tau .* sk
+        end
+
+        yk = alphak*bk
+        gk += yk
+        k = k + 1
+
+        # update the inverse Hessian approximation
+        push!(Hk, sk, yk)
+        
+    end
+
+    return pk
+end
+
+
+mutable struct OptimizationResult
+    sol::Vector         # argmin of f
+    fun::Float64        # min of f
+    fk::Vector          # evolution of fk
+    gk_norm::Vector     # evolution of ||gk||
+    converged::Bool     # convergence flag -> did the optimizer converge?
+end
+
+
+function newton_inexact_trust_region(model; sub_optimizer="cg", atol=1.0e-5, rtol=1.0e-5, mem=10, max_iter_ratio=10, atol_inner=1e-5, rtol_inner=1e-5)
     
+    # TODO: add verbose argument
+
     xk = model.meta.x0
     n = length(xk)
     fk = obj(model, xk)
     gk = grad(model, xk)
-    gnorm = gnorm0 = norm(gk)
+    gnorm = norm(gk)
+    gnorm0 = deepcopy(gnorm)
+    
     k = 0
     deltak = 1.0
     @printf "%2s  %9s  %7s\n" "k" "fk" "‖grad‖"
     @printf "%2d  %9.2e  %7.1e\n" k fk gnorm
-    while gnorm > 1.0e-6 + 1.0e-6 * gnorm0 && k < 10*n
-        Hk = hess(model,xk)
+
+    # save convergence history
+    fk_history = Vector{Float64}()
+    gk_norm_history = Vector{Float64}()
+
+    # push starting point and starting ||gk||
+    push!(fk_history, fk)
+    push!(gk_norm_history, gnorm)
+
+    converged_flag = false
+
+    max_iter = max_iter_ratio*n
+    
+    while gnorm > atol + rtol * gnorm0 && k < max_iter
+        Bk = hess(model,xk)
         ##############################
         #    Trust region update     #
         ##############################
-        (sk, stats) = Krylov.cg(Hk, -gk,radius=deltak)
+        # select sub optimizer CG or L-BFGS
+        if sub_optimizer == "cg"
+            (sk, stats) = Krylov.cg(Bk, -gk, radius=deltak, atol=atol_inner, rtol=rtol_inner)
+        elseif sub_optimizer == "lbfgs"
+            sk = lbfgs(Bk, gk, deltak, atol=atol_inner, rtol=rtol_inner, mem=mem, max_iter=max_iter)
+        else
+            throw("Selected sub optimizer is not valid.")
+        end
+        
         ##############################
         #       Trust region         #
         ##############################
         # predicted objective reduction
-        red_pred = -dot(gk, sk) - 0.5*(sk'*(Hk*sk))
+        red_pred = -dot(gk, sk) - 0.5*(sk'*(Bk*sk))
 
         f_new = obj(model, xk .+ sk)
         
@@ -75,6 +193,7 @@ function newton_inexact_trust_region(model, eps_a=1.0e-5, eps_r=1.0e-5, mem=5, m
 
         # if reduction is greater than tolerance, accept step size. Otherwise,
         # reject step size
+        # TODO: should be function argument
         if rho >= 1e-4
             # update new point
             xk .+= sk
@@ -84,6 +203,7 @@ function newton_inexact_trust_region(model, eps_a=1.0e-5, eps_r=1.0e-5, mem=5, m
         end
 
         # increase / decrease trust region radius
+        # TODO: should be function argument
         if rho >= 0.99
             deltak *= 3
         elseif rho < 1e-4
@@ -93,14 +213,33 @@ function newton_inexact_trust_region(model, eps_a=1.0e-5, eps_r=1.0e-5, mem=5, m
 
         k += 1
         @printf "%2d  %9.2e  %7.1e\n" k fk gnorm
+
+        push!(fk_history, fk)
+        push!(gk_norm_history, gnorm)
+
     end
 
-    return xk
+    # update convergence flag
+    if gnorm <= atol + rtol * gnorm0
+        converged_flag = true
+    end
 
+    # save optimization data to OptimizationResult struct
+    optimize_result = OptimizationResult(
+        xk,
+        fk,
+        fk_history,
+        gk_norm_history,
+        converged_flag
+    )
+
+    # return solution and optimization history
+    return xk, optimize_result
 end
 
 ```
 
+Les méthodes implémentés sont testées sur une fonction test provennant de Optimization Problems.
 
 ```{julia}
 #| output: false
@@ -113,10 +252,26 @@ problems = (OptimizationProblems.ADNLPProblems.eval(Meta.parse(problem))() for p
 ```{julia}
 models = []
 push!(models, OptimizationProblems.ADNLPProblems.chainwoo())
-# push!(models, OptimizationProblems.ADNLPProblems.errinros_mod())
+push!(models, OptimizationProblems.ADNLPProblems.errinros_mod())
 # push!(models, OptimizationProblems.ADNLPProblems.freuroth())
 
-# Validation of the modified newton method
-x_star = newton_inexact_trust_region(models[1])
+# Validation of the newton inexact with CG
+x_star, res = newton_inexact_trust_region(models[2], sub_optimizer="cg")
 
 ```
+
+
+```{julia}
+
+models = []
+push!(models, OptimizationProblems.ADNLPProblems.chainwoo())
+push!(models, OptimizationProblems.ADNLPProblems.errinros_mod())
+
+# Validation of the newton inexact with LBFGS
+x_star, res = newton_inexact_trust_region(models[2], sub_optimizer="lbfgs", mem=50, atol_inner=1e-8, rtol_inner=1e-8)
+```
+
+<!-- ```{julia}
+k = range(0, length(res.fk), length=length(res.fk))
+plot(k, res.fk)
+``` -->
