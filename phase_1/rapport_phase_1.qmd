@@ -21,6 +21,8 @@ format:
 engine: julia
 ---
 
+## Lien GitHub
+Ce projet est accessible sur le dépot GitHub au lien suivant : [https://github.com/oihanc/mth8408_projet](https://github.com/oihanc/mth8408_projet).
 
 ## Problématique
 Dans la cadre des algorithmes de résolution de problème d'optimisation en tenant compte de l'information de second ordre sous région de confiance, il y a toujours des problèmes quadratiques à résoudre. La méthode la plus utilisée et le gradient conjugué. Il existe des méthodes qui approxime la hessienne et sont connues sous le nom de méthodes quasi-newton. Une des plus utilisées est la méthode LBFGS. Il est connu que la méthode CG souffre en orthogonalisation. Pour cela qu'il serait intéressant d'explorer d'autres méthodes plus stables, notamment LBFGS. 
