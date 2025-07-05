@@ -1,11 +1,11 @@
 ---
-title: "Rapport de laboratoire 3"
+title: "Rapport de projet - phase 1"
 subtitle: "MTH8408"
 author:
-  - name: NAMES
-    email: EMAILS
+  - name: Oihan Cordelier, Oussama Mouhtal
+    email: oihan.cordelier@polymtl.ca, oussama-2.mouhtal@polymtl.ca
     affiliation:
-      - name: AFFILIATION
+      - name: Polytechnique Montréal
 format:
   pdf:
     keep-tex: false
@@ -23,24 +23,32 @@ engine: julia
 
 
 ## Problématique
-Dans la cadre des algorithmes de résolution de problème d'optimisation en tennant compte de l'information de second ordre sous région de confiance, il y a toujours des problèmes quadratiques à résoudre. La méthode la plus utilisée et le gradient conjugé. Il existe des méthodes qui approxime la hessienne et sont connues sous le nom de méthodes quasi-newton. Une des plus utilisée est la méthode LBFGS. Il est connue que la méthode CG souffre en orthogonalisation. Pour cela qu'il serait intéressant d'explorer d'autres méthodes plus stable, notamment LBFGS. 
+Dans la cadre des algorithmes de résolution de problème d'optimisation en tenant compte de l'information de second ordre sous région de confiance, il y a toujours des problèmes quadratiques à résoudre. La méthode la plus utilisée et le gradient conjugué. Il existe des méthodes qui approxime la hessienne et sont connues sous le nom de méthodes quasi-newton. Une des plus utilisées est la méthode LBFGS. Il est connu que la méthode CG souffre en orthogonalisation. Pour cela qu'il serait intéressant d'explorer d'autres méthodes plus stables, notamment LBFGS. 
+
 
 ## Objectifs
-Dans ce projet, le but sera de comparer la méthode CG et la méthode LBFGS dans le cadre de résolutions de problèmes quadratiques. Les objectifs suivant ont été identifiés :
+Dans ce projet, le but sera de comparer la méthode CG et la méthode LBFGS dans le cadre de résolutions de problèmes quadratiques. Les objectifs suivants ont été identifiés :
 
-1. Implémentation optimisée des algorithmes LBFGS pour le cas quadratique et newton inexcat.
-2. Compréhension théorique des résultats entre quasi-newton, notamment LBFGS et gradient congué
-3. Comparaison numérique entre les CG et LBFGS sur les banques de problèmes Optimization Problems et CUTest et étudier la relation entre re-orthogonalisation dans CG (le nombre de vecteurs à re-orthogonalisés) et la mémoire dans LBFGS
-4. Validation théorique de la relation entre re-orthogonalisation dans CG et la mémoire dans LBFGS (si le temps le permet)
+
+1. Implémentation optimisée des algorithmes LBFGS pour le cas quadratique et newton inexact.
+2. Compréhension théorique des résultats entre quasi newtons, notamment LBFGS et gradient conjugué
+3. Comparaison numérique entre les CG et LBFGS sur les banques de problèmes Optimization Problems et CUTest et étudier la relation entre reorthogonalisations dans CG (le nombre de vecteurs à re-orthogonalisés) et la mémoire dans LBFGS
+4. Validation théorique de la relation entre reorthogonalisation dans CG et la mémoire dans LBFGS (si le temps le permet)
+
 
 ## Plan d'action
+Le brouillon de l'article ([Bourhis et al, 2020]()) ainsi que le rapport de stage ([Bourhis, 2019](https://www.gerad.ca/en/papers/G-2019-64)) sont les deux références principales pour mener à bien ce projet.
 
-rapport + brouillon du papier, Nocedal, notes de cours
 
-pour les problemes 
+À cela s'ajoutent les notes du cours MTH8408 ainsi que le manuel Numerical Optimization de ([Nocedal et al., 2006](https://link.springer.com/book/10.1007/978-0-387-40065-5)) où les pseudo-codes de divers algorithmes sont présents.
+
+
+Des problèmes non contraints des banques de problèmes *OptimizationProblems* et CUTEst ([Gould et al., 2015](https://link.springer.com/article/10.1007/s10589-014-9687-3)) seront utilisés pour valider les implémentations des méthodes d'optimisation.
+
 
 ## Impact attendu
-Ce travail peut mener à trouver la relation entre LBFGS et CG avec reorthogonalisation numériquement et théoriquement.
+Ce travail vise à améliorer la compréhension des liens entre la méthode du gradient conjugué et LBFGS, dans le contexte des sous-problèmes quadratiques en région de confiance. Une meilleure compréhension de ces liens, en particulier entre le processus de réorthogonalisation dans CG et le paramètre de mémoire dans LBFGS, pourrait permettre de mieux choisir entre les deux approches selon la nature du problème (taille, conditionnement, coût de stockage, etc.).
+
 
 ## Résultats préliminaires
 La présente section présente une implémentation préliminaire de méthode de newton inexacte avec région de confiance qui utilise le CG ou LBFGS pour résoudre le sous-problème quadratique. 
@@ -64,17 +72,22 @@ using LinearAlgebra, NLPModels , ADNLPModels, Printf, Krylov, LinearOperators
 using OptimizationProblems, OptimizationProblems.ADNLPProblems
 
 using Plots
+# gr(fmt = :png)
 ```
 
 
 ### Implémentation préliminaire de la méthode LBFGS pour résoudre le sous-problème quadratique sous région de confiance
-Il s'agit d'une première implémentation qui requiert encore des optimisations. Cette méthode provient du rapport [CITATION]. 
+Il s'agit d'une première implémentation qui requiert encore des améliorations. Cette méthode provient du rapport ([Bourhis et al., 2019](https://www.gerad.ca/en/papers/G-2019-64)). 
 
-Cette implémentation propose une manière pour éviter les courbures négatives, tel que : $d_k^T A d_k < 0$, alors le pas sera calculé de tel sorte qu'il sortira de la région de confiance, auqu'elle sera appliqué un re-dimensionnement pour rester à l'intérieur de confiance. Si l'itéré courant sort du rayon de confiance, alors la direction est mise à l'échelle par un scalaire $\tau$ de tel que sorte que l'itéré sera dans la région de confiance.
+Cette implémentation propose une manière pour éviter les courbures négatives, tel que : $d_k^T A d_k < 0$, alors le pas sera calculé de tel sorte qu'il sortira de la région de confiance. Un re-dimensionnement sera alors appliqué pour rester à sur la frontière de la région de confiance. Si l'itéré courant sort du rayon de confiance, alors la direction est mise à l'échelle par un scalaire $\tau$ de tel que sorte que l'itéré sera dans la région de confiance.
 
 ```{julia}
+"""
+    lbfgs(Bj, gk, delta; atol=1e-5, rtol=1e-5, mem = 5, max_iter = 10)
 
-# Reference: https://www.gerad.ca/fr/papers/G-2019-64
+Find the minima of a quadratic model with respect to a trust region. This
+implementation is based on: https://www.gerad.ca/fr/papers/G-2019-64
+"""
 function lbfgs(Bj, gk, delta; atol=1e-5, rtol=1e-5, mem = 5, max_iter = 10)
 
     dim = length(gk)
@@ -122,10 +135,16 @@ function lbfgs(Bj, gk, delta; atol=1e-5, rtol=1e-5, mem = 5, max_iter = 10)
         
     end
 
+    # TODO: return a stats like object similar to the Krylov.cg method
     return pk
 end
+```
 
 
+
+```{julia}
+# struct to track the evolution of an optimization problem. (For later analysis between
+# the stutied methods)
 mutable struct OptimizationResult
     sol::Vector         # argmin of f
     fun::Float64        # min of f
@@ -134,7 +153,14 @@ mutable struct OptimizationResult
     converged::Bool     # convergence flag -> did the optimizer converge?
 end
 
+"""
+    newton_inexact_trust_region(model; sub_optimizer="cg", atol=1.0e-5, rtol=1.0e-5, mem=10, max_iter_ratio=10, atol_inner=1e-5, rtol_inner=1e-5)
 
+Minimize a non-linear function with a trust region approach. The implementation
+is based on: https://www.gerad.ca/fr/papers/G-2019-64.
+
+The sub-problem minimization problem method can be set by the user (either cg or lbfgs).
+"""
 function newton_inexact_trust_region(model; sub_optimizer="cg", atol=1.0e-5, rtol=1.0e-5, mem=10, max_iter_ratio=10, atol_inner=1e-5, rtol_inner=1e-5)
     
     # TODO: add verbose argument
@@ -253,10 +279,10 @@ problems = (OptimizationProblems.ADNLPProblems.eval(Meta.parse(problem))() for p
 models = []
 push!(models, OptimizationProblems.ADNLPProblems.chainwoo())
 push!(models, OptimizationProblems.ADNLPProblems.errinros_mod())
-# push!(models, OptimizationProblems.ADNLPProblems.freuroth())
+push!(models, OptimizationProblems.ADNLPProblems.freuroth())
 
 # Validation of the newton inexact with CG
-x_star, res = newton_inexact_trust_region(models[2], sub_optimizer="cg")
+x_star, res_cg = newton_inexact_trust_region(models[2], sub_optimizer="cg")
 
 ```
 
@@ -268,10 +294,16 @@ push!(models, OptimizationProblems.ADNLPProblems.chainwoo())
 push!(models, OptimizationProblems.ADNLPProblems.errinros_mod())
 
 # Validation of the newton inexact with LBFGS
-x_star, res = newton_inexact_trust_region(models[2], sub_optimizer="lbfgs", mem=50, atol_inner=1e-8, rtol_inner=1e-8)
+x_star, res_lbfgs = newton_inexact_trust_region(models[2], sub_optimizer="lbfgs", mem=50, atol_inner=1e-8, rtol_inner=1e-8)
 ```
 
 <!-- ```{julia}
-k = range(0, length(res.fk), length=length(res.fk))
-plot(k, res.fk)
+#| label: fig-parametric
+#| fig-cap: "Convergence Parametric Plots"
+
+k = range(0, length(res_cg.fk), length=length(res_cg.fk))
+plot(k, res_cg.fk, label="CG")
+
+k = range(0, length(res_lbfgs.fk), length=length(res_lbfgs.fk))
+plot!(k, res_lbfgs.fk, label="LBFGS")
 ``` -->
