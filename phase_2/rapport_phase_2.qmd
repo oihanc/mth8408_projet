@@ -1,0 +1,104 @@
+---
+title: "Rapport de projet - phase 1"
+subtitle: "MTH8408"
+author:
+  - name: Oihan Cordelier, Oussama Mouhtal
+    email: oihan.cordelier@polymtl.ca, oussama-2.mouhtal@polymtl.ca
+    affiliation:
+      - name: Polytechnique Montréal
+format:
+  pdf:
+    keep-tex: false
+    documentclass: article
+    include-in-header:
+      - text: |
+            \usepackage{xspace}
+    geometry:
+      - margin=1in
+    papersize: letter
+    colorlinks: true
+    urlcolor: blue
+engine: julia
+---
+
+## Lien GitHub
+Ce projet est accessible sur le dépot GitHub au lien suivant : [https://github.com/oihanc/mth8408_projet](https://github.com/oihanc/mth8408_projet).
+
+
+```{julia}
+#| output: false
+using Pkg
+Pkg.activate("projet_env_phase2")
+Pkg.add("ADNLPModels")
+Pkg.add("NLPModels")
+Pkg.add("Krylov")
+Pkg.add("LinearOperators")
+Pkg.add("JSOSolvers")
+Pkg.add("Plots")
+
+Pkg.add("OptimizationProblems")  # collection + outils pour sélectionner les problèmes
+include("subsolvers.jl")
+# TODO: add CUTest
+Pkg.add("SuiteSparseMatrixCollection")
+Pkg.add("MatrixMarket")
+using LinearAlgebra, NLPModels , ADNLPModels, Printf, Krylov, LinearOperators, SuiteSparseMatrixCollection, MatrixMarket 
+
+using OptimizationProblems, OptimizationProblems.ADNLPProblems, JSOSolvers
+
+using Plots
+# gr(fmt = :png)
+```
+```{julia}
+function get_mm(matrix_name)
+  ssmc = ssmc_db()
+  pb = ssmc_matrices(ssmc, "", matrix_name)
+  fetch_ssmc(pb, format="MM")
+  pb_path = fetch_ssmc(pb, format="MM")
+  path_mtx = pb_path[1]
+  A = MatrixMarket.mmread(joinpath(path_mtx, matrix_name * ".mtx"))
+  #b = MatrixMarket.mmread(joinpath(path_mtx, matrix_name * "_b.mtx"))
+  return A
+end
+
+
+function memory(n, p)
+    @assert 1 ≤ p ≤ n "p doit être entre 1 et n"
+    indices = [floor(Int, (i-1)*n/p) + 1 for i in 1:p]
+    indices = unique(sort(indices))  # au cas où n/p n'est pas exact
+    return indices
+end
+
+function plot_save_graphes(A, b, name, listmem)
+  
+
+  (xcg,statscg) = cg(A, b; atol=1e-8, rtol=1e-8,history=true)
+  gr()
+  plot(statscg.residuals, label="‖r‖ cg", lw=2, yaxis=:log, xlabel="Itération")
+  for mem in listmem
+    (xlbfgs,statslbfgs) = lbfgs(A, b; atol=1e-18, rtol=1e-18, mem = mem)  
+    p = round(Int64, 100 * mem / n)
+    if p > 0
+      plot!(statslbfgs.residuals, label="‖r‖ lbfgs $(m = p)%", lw=2)
+    end
+  end
+    
+  savefig("CG_versus_lbfgs_$(name).pdf")
+end
+
+```
+
+
+```{julia}
+A = get_mm("494_bus")
+n,n = size(A)
+b = randn(eltype(A), n)
+p=5
+listmem = memory(n, p)
+plot_save_graphes(A, b, "494_bus", listmem)
+```
+
+
+
+
+
+
