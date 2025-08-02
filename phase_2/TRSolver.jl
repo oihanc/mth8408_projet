@@ -1,4 +1,5 @@
 
+# TODO: add missing documentation for the functions in this file
 
 using LinearAlgebra, Logging, Printf
 using Krylov, LinearOperators, NLPModels, ADNLPModels, SolverTools, SolverCore

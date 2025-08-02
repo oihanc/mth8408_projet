@@ -36,7 +36,7 @@ function lbfgs(Bj, b; delta = 0.0, atol=1e-26, rtol=1e-26, mem = 2, itmax = 0, s
         push!(AP_list, bk ./ norm(dk))  
         push!(P_list, dk ./ norm(dk))  
 
-
+        # handle negative curvature
         if dot(dk, bk) <= 0
             alphak = -sign(dot(gk, dk))*2*delta/norm(dk)
         else

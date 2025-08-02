@@ -2,23 +2,16 @@
 
 using Pkg
 Pkg.activate("projet_env_phase2_3")
-# Pkg.add("ADNLPModels")
-# Pkg.add("NLPModels")
-# Pkg.add("Krylov")
-# Pkg.add("LinearOperators")
-# Pkg.add("JSOSolvers")
-# # Pkg.add("Plots")
-# Pkg.add("SolverTools")
-# Pkg.add("SolverCore")
-# Pkg.add("OptimizationProblems") # collection + outils pour sélectionner les problèmes
-
-
-# # include("subsolvers.jl")
-
-# # Pkg.add("SuiteSparseMatrixCollection")
-# # Pkg.add("MatrixMarket")
-# Pkg.add("SolverBenchmark")
-# Pkg.add("NLPModelsIpopt")
+Pkg.add("ADNLPModels")
+Pkg.add("NLPModels")
+Pkg.add("Krylov")
+Pkg.add("LinearOperators")
+Pkg.add("JSOSolvers")
+Pkg.add("SolverTools")
+Pkg.add("SolverCore")
+Pkg.add("OptimizationProblems")
+Pkg.add("SolverBenchmark")
+Pkg.add("NLPModelsIpopt")
 Pkg.add("JLD2")
 Pkg.add("Plots")
 
@@ -62,6 +55,9 @@ else
     @load "stats_opt_problems.jld2" stats
 end
 
+# set default plot dpi
+default(dpi=300)
+
 plt_iter = performance_profile(stats, df -> df.iter, tol = 1e-5, xlabel="Iterations ratio")
 savefig(plt_iter, "performance_profile_iter.png")
 
@@ -70,3 +66,7 @@ savefig(plt_iter, "performance_profile_neval.png")
 
 plt_time = performance_profile(stats, df -> df.elapsed_time, tol = 1e-5, xlabel="Elapsed time ratio")
 savefig(plt_time, "performance_profile_time.png")
+
+lbfgs_stats = Dict(k => v for (k, v) in stats if occursin("lbfgs", String(k)))
+plt_iter = performance_profile(lbfgs_stats, df -> df.elapsed_time, tol = 1e-5, xlabel="Elapsed time ratio")
+savefig(plt_iter, "performance_profile_time_lbfgs.png")
