@@ -1,0 +1,90 @@
+---
+title: "Rapport de projet - phase 2 - Région de confiance"
+subtitle: "MTH8408"
+author:
+  - name: Oihan Cordelier, Oussama Mouhtal
+    email: oihan.cordelier@polymtl.ca, oussama-2.mouhtal@polymtl.ca
+    affiliation:
+      - name: Polytechnique Montréal
+format:
+  pdf:
+    keep-tex: false
+    documentclass: article
+    include-in-header:
+      - text: |
+            \usepackage{xspace}
+    geometry:
+      - margin=1in
+    papersize: letter
+    colorlinks: true
+    urlcolor: blue
+engine: julia
+---
+
+## Lien GitHub
+Ce projet est accessible sur le dépot GitHub au lien suivant : [https://github.com/oihanc/mth8408_projet](https://github.com/oihanc/mth8408_projet).
+
+
+
+## L-BFGS
+
+
+
+## Région de confiance
+
+L'utilisation de CG et de L-BFGS est pour résoudre le sous-problème de minimisation du modèle quadratique. Nous nous sommes donc aussi intéressé à l'implémentation de l'algorithme de région de confiance. 
+Pour le moment, nous avons reproduit l'algorithme tel que fournie dans le cahier du GERAD (Bourhis et al., 2019), cependant le code reste fortement inspiré du code `trunk` du module `JSOSolver.jl`. Un possible objectif pour la troisième phase de ce projet serait de directement modifier le solveur `trunk`. À des fins de comparaison, nous avons appelé notre solveur `TRSolver`. Afin de valider notre implémentation, nous l'avons comparé avec le solveur `trunk`ainsi que `Ipopt`. Notre solveur permet d'utiliser comme sous-solveur CG ou bien L-BFGS. Pour ce dernier, il est possible de varier le paramètre de mémoire. 
+
+Pour la deuxième phase, nous avons eu comme objectifs de :
+
+- Valider l'implémentation de `TRSolver` avec CG (notre implémentation) contre le solveur `trunk`. Ce sont essentiellement les mêmes algorithmes. Puisque `trunk` est déjà fortement optimisé, si `TRSolver` obtient des performances similaires, cela veut dire que notre implémentation de l'algorithme de région de confiance est efficace. 
+- Comparer les performances de `TRSolver` avec CG et avec L-BFGS. L'idée est d'identifier si, à ce stade, nous avons des gains en efficacité avec L-BFGS. 
+- Comparer les performances de `TRSolver` avec L-BFGS pour différents paramètres de mémoire. L'objectif est d'identifier comment est-ce que le paramètre de mémoire impacte l'efficacité de l'algorithme.
+
+
+Le code ci-dessous est celui de l'algorithme de région de confiance. Comme mentionné plus tôt, il est fortment insipiré de celui provenant de `JSOSolver`. Notament, un effort particulier a été apporté pour le rendre compatible avec le module `SolverCore` et `SolverTools`. L'implémentation se base sur celle du cahier du GERAD (Bourhis et al., 2019). Une différence notable est la modification dynamique de la tolérance relative du sous-solveur. Celle-ci suit l'implémentation dans `JSOSolver` afin de s'assurer qu'elle ne soit jamais plus stricte que le solveur de région de confiance.
+
+Voici les modifications les plus importantes par rapport à la phase 1 : 
+
+- Compatibilité avec les modules `SolverTools` et `SolverBenchmark` pour faciliter les comparaisons. On peut noter particulièrement l'utilisation de la structure `GenericExecutionStats`, l'ajout du temps écoulé et du status de convergence.
+- Utilisation de l'opérateur hessien du NLPModel au lieu de la matrice hessien pour gagner en efficacité. 
+- Le réglage dynamique de la tolérance relative du sous-solveur.
+
+{{< pagebreak >}}
+
+```julia
+{{< include TRSolver.jl >}}
+```
+
+Pour comparer les performances des solveurs, nous utilisons tous les problèmes non contraints de dimensions 100 dans le module `OptimizationProblems`. Les profiles de performance sont fait avec le module `OptimizationBenchmark`. Ceci permette d'illustrer la portion de problème résolue par les algorithmes en fonction d'un ratio d'itération ou de temps. 
+
+Un problème est dit $\tau$-résolu si la condition suivante est rencontrée : 
+
+\begin{align*}
+\frac{f^i - f^0}{f^* - f^0} \geq (1 - \tau)
+\end{align*}
+
+Les algorithmes suivant sont testés :
+
+- `trunk` : région de confiance avec CG (implémentation provenant de `JSOSolver`)
+- `trSolver_cg` : région de confiance avec CG 
+- `trsolver_lbfgs` : région de confiance avec L_BFGS. Le nombre associé indique la mémoire utilisée.
+- `Ipopt` : optimiseur à points intérieurs
+
+Le script ci-dessous permet de lancer les différents solveurs sur les problèmes tests. Les données sont sauvegardées et peuvent être réutilisées plus tard sans relancer les tests.
+
+{{< pagebreak >}}
+
+```julia
+{{< include benchmark_solvers.jl >}}
+```
+
+Nous proposons 3 profiles de performance en fonction de plusieurs critères, soit le nombre d'itérations, le nombre d'évaluations de la fonction objective et le temps écoulé. Nous proposons ces 3 critères pusique certains algorithmes peuvent prendre moins d'itérations que d'autres, cependant chaque itération est plus longue a évaluée. 
+
+![Profile de performance en fonction du nombre d'itérations](performance_profile_iter.png){width=60%  fig-align="center"}
+
+![Profile de performance en fonction du nombre d'évaluations de la fonction objective](performance_profile_neval.png){width=60% fig-align="center"}
+
+![Profile de performance en fonction du temps écoulé](performance_profile_time.png){width=60% fig-align="center"}
+
+
