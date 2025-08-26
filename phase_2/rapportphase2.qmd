@@ -26,6 +26,7 @@ engine: julia
 #| echo: false
 #| output: false
 using Pkg
+
 Pkg.activate("projet_env_phase2")
 Pkg.add("ADNLPModels")
 Pkg.add("NLPModels")
@@ -33,15 +34,21 @@ Pkg.add("Krylov")
 Pkg.add("LinearOperators")
 Pkg.add("JSOSolvers")
 Pkg.add("Plots")
+Pkg.add("SolverCore")
+
 
 Pkg.add("OptimizationProblems")  # collection + outils pour sélectionner les problèmes
-include("subsolvers.jl")
+
+
 # TODO: add CUTest
 Pkg.add("SuiteSparseMatrixCollection")
 Pkg.add("MatrixMarket")
-using LinearAlgebra, NLPModels , ADNLPModels, Printf, Krylov, LinearOperators, SuiteSparseMatrixCollection, MatrixMarket 
+
+using LinearAlgebra, ADNLPModels, NLPModels , Printf, Krylov, LinearOperators, SuiteSparseMatrixCollection, MatrixMarket 
+using SolverCore
 
 using OptimizationProblems, OptimizationProblems.ADNLPProblems, JSOSolvers
+include("lbfgsnew.jl")
 
 using Plots
 # gr(fmt = :png)
@@ -108,15 +115,19 @@ Compare CG et L-BFGS pour différentes tailles de mémoire, et sauvegarde un gra
 """
 function cg_lbfgs(A, b, name, listmem, atol, rtol)
   
-
+  n,n = size(A)
   (xcg,statscg) = cg(A, b; atol=atol, rtol=rtol,history=true)
-  (xlbfgs,statslbfgs) = lbfgs(A, b; atol=atol, rtol=rtol, mem = 1) 
+  f(x) = dot(0.5 .* x, A*x) - dot(b,x)
+  model = ADNLPModel(f, zeros(n))
+
+  #(xlbfgs,statslbfgs) = lbfgsbasic(A, b; atol=atol, rtol=rtol, mem = 1)
+  (xlbfgs,statslbfgs) = lbfgsnew(model,A,b; mem = 1)
   gr()
   plot(statscg.residuals, label="‖r‖ cg ", lw=1, yaxis=:log, linestyle = :dot, xlabel="Itération", legend = :bottomleft)
   plot!(statslbfgs.residuals, label="‖r‖ lbfgs $(m = 1)", lw=1, linestyle = :dash)
 
   for mem in listmem
-    (xlbfgs,statslbfgs) = lbfgs(A, b; atol=atol, rtol=rtol, mem = mem)  
+    (xlbfgs,statslbfgs) = lbfgsnew(model,A,b; mem = mem)  
     p = round(Int64, 100 * mem / n)
     if p > 0 && p < 100
       plot!(statslbfgs.residuals, label="‖r‖ lbfgs $(m = p)%", lw=1,linestyle = :dash)
@@ -134,8 +145,9 @@ end
 Compare DIOM et L-BFGS pour différentes tailles de mémoire, et sauvegarde un graphique
 """
 function diom_lbfgs(A, b, name, listmem, atol, rtol)
-  
-  (xlbfgs,statslbfgs) = lbfgs(A, b; atol=atol, rtol=rtol, mem = 2)  
+  f(x) = dot(0.5 .* x, A*x) - dot(b,x)
+  model = ADNLPModel(f, zeros(n))
+  (xlbfgs,statslbfgs) = lbfgsnew(model,A,b; atol=atol, rtol=rtol, mem = 2)  
   (xdiom,statsdiom) = diom(A, b; memory =2, atol=atol, rtol=rtol,history=true)
   gr()
   plot(statslbfgs.residuals, label="‖r‖ lbfgs $(m = 2)", lw=1,yaxis=:log, linestyle = :dash, xlabel="Itération",legend = :bottomright)
@@ -143,7 +155,7 @@ function diom_lbfgs(A, b, name, listmem, atol, rtol)
   for mem in listmem
     p = round(Int64, 100 * mem / n)
     if mem > 2 && p > 0
-    (xlbfgs,statslbfgs) = lbfgs(A, b; atol=atol, rtol=rtol, mem = mem)  
+    (xlbfgs,statslbfgs) = lbfgsnew(model,A,b; atol=atol, rtol=rtol, mem = mem)  
     (xdiom,statsdiom) = diom(A, b; memory = mem,atol=atol, rtol=rtol,history=true)
     plot!(statslbfgs.residuals, label="‖r‖ lbfgs $(m = p)%", linestyle = :dash,lw=1)
     plot!(statsdiom.residuals, label="‖r‖ diom $(m = p)%", linestyle = :dot,lw=1)
@@ -161,11 +173,16 @@ Calcule la perte d’orthogonalité associée aux directions L-BFGS pour plusieu
 
 function orthogonality_loss(A, b; maxiter=10, mem=1)
     Loss = Float64[]
+    f(x) = dot(0.5 .* x, A*x) - dot(b,x)
+    model = ADNLPModel(f, zeros(n))
     for i in 2:maxiter
-        (xlbfgs,statslbfgs) =  lbfgs(A, b; mem=mem, itmax = i)
-        U = tril(statslbfgs.PAP, -1)                        # partie triangulaire inférieure stricte
+        (xlbfgs,statslbfgs) =  lbfgsnew(model,A,b; mem=mem, itmax = i)
+        U = tril(statslbfgs.PAP, -1)
+        if i == 5 && mem==1
+        println(U)
+        end                        # partie triangulaire inférieure stricte
         I_U = I + U         # U + I
-        loss = norm(U)        # || (U + I)^(-1) * U ||_2
+        loss = norm(U,Inf)        # || (U + I)^(-1) * U ||_2
         push!(Loss, loss)              
     end        
     return Loss
@@ -210,7 +227,7 @@ Une façon de mesurer la perte de conjugaison consiste donc à évaluer la norme
 - Il est important de souligner qu’une amélioration significative de la perte de conjugaison est obtenue  on augementant la mémoire de la matrice `lbfgs`. Meme on peut remarquer que dès une itération supérieur à la taille de la mémoire on perte la propriété de conjugaison des directions (ce n'est pas une généralisation).
 
 ```{julia}
-A = get_mm("bcsstk06")
+A = get_mm("1138_bus")
 n,n = size(A)
 b = randn(eltype(A), n)
 p=5
