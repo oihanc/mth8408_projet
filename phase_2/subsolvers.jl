@@ -10,7 +10,7 @@ end
 Find the minima of a quadratic model with respect to a trust region. This
 implementation is based on: https://www.gerad.ca/fr/papers/G-2019-64
 """
-function lbfgs(Bj, b; delta = 0.0, atol=1e-26, rtol=1e-26, mem = 2, itmax = 0, scaling = false)
+function lbfgsbasic(Bj, b; delta = 0.0, atol=1e-26, rtol=1e-26, mem = 2, itmax = 0, scaling = false)
 
     gk = copy(b)
     dim = length(gk)
@@ -70,4 +70,6 @@ function lbfgs(Bj, b; delta = 0.0, atol=1e-26, rtol=1e-26, mem = 2, itmax = 0, s
     PAP = P' * AP
     return pk,  LBFGSStats(k, residuals, PAP)
 end
+
+
 
