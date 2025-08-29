@@ -67,6 +67,7 @@ function solve!(
     atol::T = sqrt(eps(T)),
     rtol::T = sqrt(eps(T)),
     sub_rtol = sqrt(eps(T)),
+    fixed_sub_rtol = false,
     verbose::Int = 0,
     mu = 0.25,
     eta = 0.01,
@@ -98,12 +99,20 @@ end
     # H = solver.H
     subsolver = solver.subsolver
 
-    x = nlp.meta.x0
+    x = copy(nlp.meta.x0)
     f = obj(nlp, x)
     g = grad(nlp, x)
+    dim = nlp.meta.nvar
 
     H = hess_op(nlp, x)
-    
+
+    Hk = nothing
+    ws = nothing
+    if subsolver == :lbfgs
+        Hk = InverseLBFGSOperator(dim, mem = mem, scaling = scaling)
+        ws = LBFGSWorkspace(dim, Float64) # TODO: use T
+    end
+
     delta = 1.0
 
     p = similar(x)
@@ -112,7 +121,9 @@ end
     grad_norm = norm(g)
     tolerance = atol + grad_norm * rtol
 
-    sub_rtol = max(rtol, min(sqrt(grad_norm), T(0.1)))
+    if !fixed_sub_rtol
+        sub_rtol = max(rtol, min(sqrt(grad_norm), T(0.1)))
+    end 
 
     iter = 0
     set_iter!(stats, iter)
@@ -131,23 +142,28 @@ end
         # solve quadratic model subject to a trust region constraint
         if subsolver == :cg
             p, sub_stats = Krylov.cg(H, -g, radius=delta, atol=atol, rtol=sub_rtol)
+        elseif subsolver == :diom
+            p, sub_stats = diom(H, g, radius=delta, atol=atol, rtol=sub_rtol)
         elseif subsolver == :lbfgs
-            p, sub_stats = lbfgs(H, g, delta=delta, 
+            reset!(Hk)
+            p, sub_stats = lbfgs_tr(H, g, ws, mem; 
+                                    Hk=Hk, 
+                                    delta=delta, 
                                     atol=atol, 
-                                    rtol=sub_rtol, 
-                                    mem = mem, 
-                                    itmax = 2*n, 
-                                    scaling = scaling)
+                                    rtol=sub_rtol)
         end
         
         b .= H * p     # using hess_op
 
-        f_new = obj(nlp, x + p)
+        f_new = obj(nlp, x .+ p)
         rho = (f_new - f)/(dot(p, g) + 0.5*(dot(p, b)))
         
         # bad approximation
         if rho <= mu
             delta *= 0.25
+            # if subsolver == :lbfgs
+            #     reset!(Hk)
+            # end
 
         # very good approximation
         elseif rho > 1 - mu
@@ -163,7 +179,13 @@ end
 
             H = hess_op(nlp, x)
 
-            sub_rtol = max(rtol, min(sqrt(grad_norm), T(0.1)))
+            # if subsolver == :lbfgs
+            #     reset!(Hk)
+            # end
+
+            if !fixed_sub_rtol
+                sub_rtol = max(rtol, min(sqrt(grad_norm), T(0.1)))
+            end
         end
 
         if grad_norm <= tolerance

@@ -76,8 +76,10 @@ function memory(n, p)
 end
 
 
-function elapsed_time_comparison(A, b, name, listmem, atol, rtol)
+function elapsed_time_comparison(A, b, name, listmem, atol, rtol, radius=1.0e8)
   
+  n = length(b)
+
   plt = plot(layout = (2, 1), size=(800, 800))
 
 
@@ -90,7 +92,7 @@ function elapsed_time_comparison(A, b, name, listmem, atol, rtol)
   end
   
 
-  (xcg, statscg) = cg(A, b; atol=atol, rtol=rtol, callback=cg_timing, history=true)
+  (xcg, statscg) = cg(A, b; radius=radius, atol=atol, rtol=rtol, callback=cg_timing, history=true)
   println("elapsed time: ", time() - start_time)
 
   gr()  
@@ -107,10 +109,11 @@ function elapsed_time_comparison(A, b, name, listmem, atol, rtol)
 
   for mem in listmem
     reset!(Hk)
-    Hk = InverseLBFGSOperator(length(b), mem = mem, scaling = true)
+    Hk = InverseLBFGSOperator(length(b), mem = mem, scaling = false)
 
-    (xlbfgs,statslbfgs) = lbfgs_tr(A, b; Hk, atol=atol, rtol=rtol)  
-    p = round(Int64, 100 * mem / n)
+    (xlbfgs,statslbfgs) = lbfgs_tr(A, b; Hk, atol=atol, rtol=rtol, delta=radius)  
+    # p = round(Int64, 100 * mem / n)
+    p = round(Int64, mem)
 
     plot!(plt[1], statslbfgs.residuals, label="‖r‖ lbfgs $mem", lw=1,linestyle = :dash)
     plot!(plt[2], statslbfgs.elapsed_time*1.0e3, statslbfgs.residuals, label="‖r‖ lbfgs $mem", lw=1,linestyle = :dash)
@@ -122,32 +125,43 @@ function elapsed_time_comparison(A, b, name, listmem, atol, rtol)
     # end
   end
     
-  savefig("figures/CG_versus_lbfgs_$(name)_time.pdf")
+  savefig("figures/CG_versus_lbfgs_$(name)_time.png")
 end
 
 
-for nlp in problems
-    A = hess_op(nlp, nlp.meta.x0)
-    b = grad(nlp, nlp.meta.x0)
-    n = length(b)
+# for nlp in problems
+#     A = hess_op(nlp, nlp.meta.x0)
+#     b = grad(nlp, nlp.meta.x0)
+#     n = length(b)
+#     radius = 1.0
 
-    # A = get_mm("494_bus")
-    # n,n = size(A)
-    # b = randn(eltype(A), n)
-    atol = 1e-9
-    rtol = 1e-9
-    p=4
-    listmem = [1, 2, 5, 10, 20]
+#     positive_definite = isposdef(hess(nlp, nlp.meta.x0))
+#     println("Positive Definite= ", positive_definite)
+#     if positive_definite
+#       radius = 1.0e6
+#     else
+#       radius = 1.0
+#     end
+
+#     atol = 1e-9
+#     rtol = 1e-9
+#     p=4
+#     listmem = [1, 2, 5, 10, 20, 50, 100]
     
-    elapsed_time_comparison(A, b, nlp.meta.name, listmem, atol, rtol)
-end
+#     elapsed_time_comparison(A, b, nlp.meta.name, listmem, atol, rtol, radius)
+# end
 
 A = get_mm("494_bus")
 n,n = size(A)
 b = randn(eltype(A), n)
+
+positive_definite = isposdef(A)
+println("Positive Definite= ", positive_definite)
+
 atol = 1e-9
 rtol = 1e-9
 p=4
-# listmem = memory(n, p)
 listmem = memory(n, p)
+println("listmem= ", listmem)
+# listmem = [1, 2, 5, 10, 20]
 elapsed_time_comparison(A, b, "494_bus", listmem, atol, rtol)

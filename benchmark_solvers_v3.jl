@@ -34,17 +34,17 @@ meta = OptimizationProblems.meta
 
 if DEBUG
     problem_list = ["fletchcr", "nondquar", "woods", "broydn7d", "sparsine"]
-else
-    problem_list = meta[(meta.variable_nvar.==true).&(meta.ncon.==0).&.!meta.has_bounds.&(meta.minimize.==true), :name]
-end
+    else
+        problem_list = meta[(meta.variable_nvar.==true).&(meta.ncon.==0).&.!meta.has_bounds.&(meta.minimize.==true), :name]
+        end
 
-if n_problems > length(problem_list)
-    n_problems = length(problem_list)
-end
+        if n_problems > length(problem_list)
+            n_problems = length(problem_list)
+            end
 
-problem_list = problem_list[1:n_problems]
+            problem_list = problem_list[1:n_problems]
 
-problems = (OptimizationProblems.ADNLPProblems.eval(Meta.parse(problem))(n=nvars) for problem ∈ problem_list)
+            problems = (OptimizationProblems.ADNLPProblems.eval(Meta.parse(problem))(n=nvars) for problem ∈ problem_list)
 
 
 solvers = Dict(

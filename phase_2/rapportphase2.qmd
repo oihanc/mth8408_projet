@@ -146,7 +146,7 @@ function diom_lbfgs(A, b, name, listmem, atol, rtol)
   for mem in listmem
     p = round(Int64, 100 * mem / n)
     if mem > 2 && p > 0
-    (xlbfgs,statslbfgs) = lbfgs(A, b; atol=atol, rtol=rtol, mem = mem)  
+    (xlbfgs,statslbfgs) = lbfgs(A, b; atol=atol, rtol=rtol, mem = mem) 
     (xdiom,statsdiom) = diom(A, b; memory = mem,atol=atol, rtol=rtol,history=true)
     plot!(statslbfgs.residuals, label="‖r‖ lbfgs $(m = p)%", linestyle = :dash,lw=1)
     plot!(statsdiom.residuals, label="‖r‖ diom $(m = p)%", linestyle = :dot,lw=1)
