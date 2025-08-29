@@ -371,6 +371,7 @@ kwargs_diom = (:M, :N, :ldiv, :radius, :reorthogonalization, :atol, :rtol, :itma
       rNorm = Haux * abs(ξ / H[1])
       # New way to compute the residual norm.
       # ‖M(b - Axₖ)‖₂ = hₖ₊₁.ₖ * |ξₖ / uₖ.ₖ|
+      # rNorm1 = sqrt(rNorm1^2 + (ξ)^2*((c/H[1])^2+ (Haux/H[1])^2) - 2*((-1)^(iter+1)) *(c/H[1])* ξ * rNorm1)
       history && push!(rNorms, rNorm)
       #(verbose > 0) && println("iter: $iter, rNorm: $rNorm, rNorm1: $rNorm1")
       # Stopping conditions that do not depend on user input.

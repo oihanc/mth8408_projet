@@ -59,7 +59,7 @@ function lbfgs_tr! end
 
 
 function lbfgs_tr(
-    A::AbstractLinearOperator, 
+    A::Union{AbstractLinearOperator, Any},
     b::AbstractVector{T}; 
     mem::Int=2,
     radius::T=zero(T),
@@ -97,7 +97,7 @@ function lbfgs_tr!(
         itmax = 2*ws.n
     end
 
-    fill!(ws.pk, 0.0)
+    fill!(ws.pk, zero(T))
     alphak = zero(T)
 
     callback(ws)
@@ -121,14 +121,14 @@ function lbfgs_tr!(
         ws.sk .= alphak .* ws.dk    # scale search direction
         ws.pk .+= ws.sk             # update current point
 
-        if radius > 0.0 && norm(ws.pk) >= radius
+        if radius > 0 && norm(ws.pk) >= radius
             ws.pk .-= ws.sk
             pksk = dot(ws.pk, ws.sk)
             sksk = dot(ws.sk, ws.sk)
 
             tau = (-pksk + sqrt(pksk^2 + sksk*(radius^2 - dot(ws.pk, ws.pk))))/sksk
 
-            return ws.pk .+ tau .* ws.sk, nothing
+            return ws.pk .+ tau .* ws.sk, nothing # TODO: add SimpleStats
         end
         
         ws.yk .= alphak .* ws.bk    # compute gradient update
@@ -151,7 +151,7 @@ function lbfgs_tr!(
         callback(ws)
     end
 
-    return ws.pk, nothing
+    return ws.pk, nothing # TODO: add SimpleStats
 end
 
 
@@ -161,7 +161,7 @@ function Krylov.krylov_solve!(
     b::AbstractVector{T};
     atol::T = √eps(T),
     rtol::T = √eps(T),
-    radius::T = Inf,
+    radius::T = zero(T),
     itmax::Int = 0,
     timemax::Float64 = Inf,
     verbose::Int = 0,
@@ -191,9 +191,9 @@ function Krylov.krylov_solve!(
     b::AbstractVector{T};
     atol::T = √eps(T),
     rtol::T = √eps(T),
-    radius::T = Inf,
+    radius::T = zero(T),
     itmax::Int = 0,
-    timemax::Float64 = Inf,
+    timemax::Float64 = Inf,   # TODO
     verbose::Int = 0,
     kwargs...
 ) where {T}
