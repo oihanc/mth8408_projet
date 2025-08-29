@@ -211,10 +211,8 @@ kwargs_diom = (:M, :N, :ldiv, :radius, :reorthogonalization, :atol, :rtol, :itma
     end
     MisI || mulorldiv!(r₀, M, t, ldiv)  # M(b - Ax₀)
     rNorm = knorm(n, r₀)                # β = ‖r₀‖₂
-    rNorm1 = copy(rNorm)
-    c = 0
     history && push!(rNorms, rNorm)
-    if rNorm1 == 0
+    if rNorm == 0
       stats.niter = 0
       stats.solved, stats.inconsistent = true, false
       stats.timer = start_time |> ktimer
@@ -238,6 +236,8 @@ kwargs_diom = (:M, :N, :ldiv, :radius, :reorthogonalization, :atol, :rtol, :itma
     for i = 1 : mem-1
       kfill!(P[i], zero(FC))  # Directions Pₖ = NVₖ(Uₖ)⁻¹.
     end
+    pcg = P[1]
+    pcgnorm2 = zero(FC)
     kfill!(H, zero(FC))  # Last column of the band hessenberg matrix Hₖ = LₖUₖ.
     # Each column has at most mem + 1 nonzero elements.
     # hᵢ.ₖ is stored as H[k-i+1], i ≤ k. hₖ₊₁.ₖ is not stored in H.
@@ -336,14 +336,14 @@ kwargs_diom = (:M, :N, :ldiv, :radius, :reorthogonalization, :atol, :rtol, :itma
       kaxpy!(n, one(FC), z, P[ppos])
 
       # Compute step size to boundary if applicable.
-      c = H[1]
       if radius == 0
          σ = 1/H[1]  
       elseif NisI && MisI
-         # σ = maximum(to_boundary(n, x, ξ .* P[ppos], z, radius, dNorm2= ξ^2))
-         σ = maximum(to_boundary(n, x, ξ .* P[ppos], z, radius, dNorm2= ξ^2 * kdot(n, P[ppos], P[ppos])))
+         pcg = ξ .* P[ppos]
+         pcgnorm2 = knorm(n, pcg)^2
+         σ = maximum(to_boundary(n, x, pcg, z, radius, dNorm2= pcgnorm2))
       elseif MisN
-         σ = maximum(to_boundary(n, x, ξ .* P[ppos], z, radius, M=M, ldiv=!ldiv)) 
+         σ = maximum(to_boundary(n, x, pcg, z, radius, M=M, ldiv=!ldiv)) 
       else
          error("Must use split preconditioning")
       end
@@ -351,19 +351,18 @@ kwargs_diom = (:M, :N, :ldiv, :radius, :reorthogonalization, :atol, :rtol, :itma
       # Move along p from x to the boundary if either
       # the next step leads outside the trust region or
       # we have nonpositive curvature.
-      if (radius > 0) && ((1/H[1] ≤ 0) || (1/H[1] > σ))
-        c = H[1]
-        H[1] = 1/σ
-        if 1/H[1] ≤ 0
-          # stats.npcCount = 1      # Review -> SimpleStats source implementation does not have the field npcCount
+      if (radius > 0) && ((1/real(H[1]) ≤ 0) || (1/real(H[1]) > σ))
+        if 1/real(H[1]) ≤ 0
           stats.indefinite = true
         end
+        H[1] = 1/σ
         on_boundary = true
       end
 
       # pₖ = pₐᵤₓ / uₖ.ₖ
 
       kdiv!(n, P[ppos], H[1])
+
       # Update solution xₖ.
       # xₖ = xₖ₋₁ + ξₖ * pₖ
       kaxpy!(n, ξ, P[ppos], x)
@@ -372,9 +371,8 @@ kwargs_diom = (:M, :N, :ldiv, :radius, :reorthogonalization, :atol, :rtol, :itma
       rNorm = Haux * abs(ξ / H[1])
       # New way to compute the residual norm.
       # ‖M(b - Axₖ)‖₂ = hₖ₊₁.ₖ * |ξₖ / uₖ.ₖ|
-      rNorm1 = sqrt(rNorm1^2 + (ξ)^2*((c/H[1])^2+ (Haux/H[1])^2) - 2*((-1)^(iter+1)) *(c/H[1])* ξ * rNorm1)
       history && push!(rNorms, rNorm)
-      (verbose > 0) && println("iter: $iter, rNorm: $rNorm, rNorm1: $rNorm1")
+      #(verbose > 0) && println("iter: $iter, rNorm: $rNorm, rNorm1: $rNorm1")
       # Stopping conditions that do not depend on user input.
       # This is to guard against tolerances that are unreasonably small.
       resid_decrease_mach = (rNorm + one(T) ≤ one(T))
@@ -410,3 +408,5 @@ kwargs_diom = (:M, :N, :ldiv, :radius, :reorthogonalization, :atol, :rtol, :itma
     return workspace
   end
 end
+
+
