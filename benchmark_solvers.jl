@@ -1,72 +1,157 @@
-
-
 using Pkg
-# Pkg.activate("projet_env")
-# Pkg.add("ADNLPModels")
-# Pkg.add("NLPModels")
-# Pkg.add("Krylov")
-# Pkg.add("LinearOperators")
-# Pkg.add("JSOSolvers")
-# Pkg.add("SolverTools")
-# Pkg.add("SolverCore")
-# Pkg.add("OptimizationProblems")
-# Pkg.add("SolverBenchmark")
-# Pkg.add("NLPModelsIpopt")
-# Pkg.add("JLD2")
-# Pkg.add("Plots")
+Pkg.activate("projet_env")
 
-# TODO: add CUTest
+# Pkg.add("DataFrames")
+# Pkg.add("CSV")
 
-using LinearAlgebra, NLPModels , ADNLPModels, Printf, LinearOperators, Krylov
-using OptimizationProblems, OptimizationProblems.ADNLPProblems, JSOSolvers, SolverTools, SolverCore, SolverBenchmark, NLPModelsIpopt
-using JLD2, Plots
+using Random
 
-include("TRSolver.jl")
+using DataFrames, CSV
 
-DEBUG = false
-EXE_PROBLEMS = true
+using OptimizationProblems, OptimizationProblems.ADNLPProblems
+using NLPModels, ADNLPModels
+
+using Quadmath
+using JSOSolvers
+
+using LinearAlgebra
+
+include("TrunkSolverUpdate.jl")
+include("TRSolverModule.jl")
+
+
+DEBUG = false   # if set to true -> only 5 test problems
+
+nvars = 500
+
+result_file = "benchmark_n500_float32.csv"
 
 meta = OptimizationProblems.meta
-problem_list = meta[(meta.ncon.==0).&.!meta.has_bounds.&(meta.nvar.==100), :name]
-problems = nothing
-
-problem_to_exe = ["fletchcr", "nondquar", "woods", "broydn7d", "sparsine"]
 
 if DEBUG
-    problems = (OptimizationProblems.ADNLPProblems.eval(Meta.parse(problem))() for problem ∈ problem_to_exe)
+    problem_list = ["fletchcr", "nondquar", "woods", "broydn7d", "sparsine"]
 else
-    problems = (OptimizationProblems.ADNLPProblems.eval(Meta.parse(problem))() for problem ∈ problem_list)
+    problem_list = meta[(meta.variable_nvar.==true).&(meta.ncon.==0).&.!meta.has_bounds.&(meta.minimize.==true), :name]
 end
+
+if !isfile(result_file)
+    CSV.write(result_file, DataFrame(
+        problem=String[],
+        nvar=Int16[],
+        precision=Float64[],
+        solver=String[],
+        status=String[],
+        objective=Float64[],
+        dual_feas=Float64[],
+        iter=Int16[],
+        elapsed_time=Float64[],
+        neval_obj=Int16[],
+        neval_grad=Int16[],
+        neval_hprod=Int16[],
+    ))
+end
+
+
+problem_list = problem_list[1:50]
+
+precisions = [Float32, Float64, Float128]
+
+max_time = 30.0
 
 solvers = Dict(
-    # :ipopt => nlp -> ipopt(nlp, print_level=0),
-    # :trunk => nlp -> trunk(nlp, verbose=0),
-    :trsolver_cg => nlp -> trsolver(nlp, subsolver=:cg, max_time=10.0),
-    :trsolver_lbfgs_1 => nlp -> trsolver(nlp, subsolver=:lbfgs, max_time=10.0, mem=1),
-    :trsolver_lbfgs_5 => nlp -> trsolver(nlp, subsolver=:lbfgs, max_time=10.0, mem=5),
-    :trsolver_lbfgs_10 => nlp -> trsolver(nlp, subsolver=:lbfgs, max_time=10.0, mem=10),
-    # :trsolver_lbfgs_10_no_scaling => nlp -> trsolver(nlp, subsolver=:lbfgs, max_time=10.0, mem=5, scaling=false),
+    :trunk_cg => (nlp; kwargs...) -> trunk(nlp; kwargs...),
+    
+    :trunk_lbfgs_2 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:lbfgs, mem=2, kwargs...),
+    :trunk_lbfgs_5 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:lbfgs, mem=5, kwargs...),
+    :trunk_lbfgs_10 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:lbfgs, mem=10, kwargs...),
+    :trunk_lbfgs_20 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:lbfgs, mem=20, kwargs...),
+    :trunk_lbfgs_50 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:lbfgs, mem=50, kwargs...),
+    :trunk_lbfgs_100 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:lbfgs, mem=100, kwargs...),
+
+    :trunk_diom_2 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:diom, mem=2, kwargs...),
+    :trunk_diom_5 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:diom, mem=5, kwargs...),
+    :trunk_diom_10 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:diom, mem=10, kwargs...),
+    :trunk_diom_20 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:diom, mem=20, kwargs...),
+    :trunk_diom_50 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:diom, mem=50, kwargs...),
+    :trunk_diom_100 => (nlp; kwargs...) -> TrunkSolverUpdate.trunk(nlp; subsolver=:diom, mem=100, kwargs...),
+
+    # :trsolver_lbfgs_2 => (nlp; fixed_sub_rtol=true, kwargs...) -> TRSolverModule.trsolver(nlp; subsolver=:lbfgs, mem=2, kwargs...),
+    # :trsolver_lbfgs_50 => (nlp; fixed_sub_rtol=true, kwargs...) -> TRSolverModule.trsolver(nlp; subsolver=:lbfgs, mem=50, kwargs...),
+    # :trsolver_lbfgs_100 => (nlp; fixed_sub_rtol=true, kwargs...) -> TRSolverModule.trsolver(nlp; subsolver=:lbfgs, mem=100, kwargs...),
+    # :trsolver_lbfgs_500 => (nlp; fixed_sub_rtol=true, kwargs...) -> TRSolverModule.trsolver(nlp; subsolver=:lbfgs, mem=500, kwargs...),
+
+    # :trsolver_diom_2 => (nlp; fixed_sub_rtol=true, kwargs...) -> TRSolverModule.trsolver(nlp; subsolver=:diom, mem=2, kwargs...),
+    # :trsolver_diom_5 => (nlp; fixed_sub_rtol=true, kwargs...) -> TRSolverModule.trsolver(nlp; subsolver=:diom, mem=5, kwargs...),
+    # :trsolver_diom_50 => (nlp; fixed_sub_rtol=true, kwargs...) -> TRSolverModule.trsolver(nlp; subsolver=:diom, mem=50, kwargs...),
+    # :trsolver_diom_100 => (nlp; fixed_sub_rtol=true, kwargs...) -> TRSolverModule.trsolver(nlp; subsolver=:diom, mem=100, kwargs...),
+    # :trsolver_diom_500 => (nlp; fixed_sub_rtol=true, kwargs...) -> TRSolverModule.trsolver(nlp; subsolver=:diom, mem=500, kwargs...),
 )
 
-if EXE_PROBLEMS
-    stats = bmark_solvers(solvers, problems)
-    @save "data/stats_opt_problems.jld2" stats
-else
-    @load "data/stats_opt_problems.jld2" stats
+# df = CSV.read("benchmark_n100_float128.csv", DataFrame)
+# problem_list = unique(df.problem)
+
+# df = CSV.read(result_file, DataFrame)
+# problems_in_file = unique(df.problem)
+
+# println(length(problem_list))
+# problem_list = filter(p -> !(p in problems_in_file), problem_list)
+# println(length(problem_list))
+
+# problems = (OptimizationProblems.ADNLPProblems.eval(Meta.parse(problem))(n=nvars, type=Float32) for problem ∈ problem_list)
+
+for float_type in precisions
+    println("======= Float type= ", float_type, " =======")
+
+    problems = (OptimizationProblems.ADNLPProblems.eval(Meta.parse(problem))(n=nvars, type=float_type) for problem ∈ problem_list)
+
+    for nlp in problems
+
+        x0 = copy(nlp.meta.x0)
+
+        shuffled_solvers = shuffle(collect(solvers))
+
+        for (sol_name, sol) in shuffled_solvers
+
+            if norm(x0 .- nlp.meta.x0) > √(eps(float_type))
+                throw("NLPModel.meta.x0 was changed. Review solver implementation!")
+            end
+
+            reset!(nlp)
+
+            println("solver= ", sol_name)
+
+            try
+                stats = sol(nlp; max_time=max_time, verbose=0)
+
+                row = DataFrame((
+                problem = [nlp.meta.name],
+                nvar = [nlp.meta.nvar],
+                precision = [float_type],
+                solver = [String(sol_name)],
+                status = [string(stats.status)],
+                objective = [stats.objective],
+                dual_feas = [stats.dual_feas],
+                iter = [stats.iter],
+                elapsed_time = [stats.elapsed_time],
+                neval_obj = [neval_obj(nlp)],
+                neval_grad = [neval_grad(nlp)],
+                neval_hprod = [neval_hprod(nlp)],
+            ))
+
+            CSV.write(result_file, row; append=true)
+            
+            catch e
+                println("For problem= ", nlp.meta.name)
+
+                if isa(e, MethodError)
+                    println("caught a MethodError: $e")
+                elseif isa(e, ArgumentError)
+                    println("caught an ArgumentError: $e")
+                else
+                    println("caught an unexpected error: $e")
+                end
+            end
+
+        end
+    end
 end
-
-# set default plot dpi
-default(dpi=300)
-
-plt_iter = performance_profile(stats, df -> df.iter, tol = 1e-5, xlabel="Iterations ratio")
-savefig(plt_iter, "figures/performance_profile_iter.png")
-
-plt_iter = performance_profile(stats, df -> df.neval_obj, tol = 1e-5, xlabel="Objective evaluations ratio")
-savefig(plt_iter, "figures/performance_profile_neval.png")
-
-plt_time = performance_profile(stats, df -> df.elapsed_time, tol = 1e-5, xlabel="Elapsed time ratio")
-savefig(plt_time, "figures/performance_profile_time.png")
-
-lbfgs_stats = Dict(k => v for (k, v) in stats if occursin("lbfgs", String(k)))
-plt_iter = performance_profile(lbfgs_stats, df -> df.elapsed_time, tol = 1e-5, xlabel="Elapsed time ratio")
-savefig(plt_iter, "figures/performance_profile_time_lbfgs.png")

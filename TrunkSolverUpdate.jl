@@ -1,6 +1,13 @@
 using Pkg
 Pkg.activate("projet_env")
 
+"""
+The following script is meant to leverage the trust region implementation `trunk` in JSOSolver and 
+make it compatible with a L-BFGS and DIOM trust region quadratic solver
+"""
+
+# TODO: add documentation (doc-string)
+
 
 module TrunkSolverUpdate
 

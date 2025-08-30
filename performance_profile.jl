@@ -1,79 +1,132 @@
 using Pkg
 Pkg.activate("projet_env")
-# Pkg.add("ADNLPModels")
-# Pkg.add("NLPModels")
-# Pkg.add("Krylov")
-# Pkg.add("LinearOperators")
-# Pkg.add("JSOSolvers")
-# Pkg.add("SolverTools")
-# Pkg.add("SolverCore")
-# Pkg.add("OptimizationProblems")
-# Pkg.add("SolverBenchmark")
-# Pkg.add("NLPModelsIpopt")
-# Pkg.add("JLD2")
-# Pkg.add("Plots")
-# Pkg.add("ProgressBars")
 
-# TODO: add CUTest
+using DataFrames, CSV, Plots
 
-using LinearAlgebra, NLPModels, ADNLPModels, Printf, LinearOperators, Krylov
-using OptimizationProblems, OptimizationProblems.ADNLPProblems, JSOSolvers, SolverTools, SolverCore, SolverBenchmark, NLPModelsIpopt
-using JLD2, Plots
-using ProgressBars
+"""
+    performance_profiles(filename::String; 
+                              nvar::Union{Nothing,Int}=nothing, 
+                              precision::Union{Nothing,String}=nothing,
+                              solvers::Union{Nothing, Vector{String}}=nothing)
+                              
+create performance profiles for a given CSV results file.
 
+# arguments
+- `filename::String`: path to CSV file with benchmark results
+- `nvar::Int`: filter problems by the number of variables
+- `precision::String`: filter by the precision string (e.g. "Float64", "Float128")
+"""
+function performance_profiles(filename::String; 
+                              nvar::Union{Nothing,Int}=nothing, 
+                              precision::Union{Nothing,String}=nothing,
+                              solvers::Union{Nothing, Vector{String}}=nothing)
 
-@load "data/stats_opt_problems.jld2" stats
+    df = CSV.read(filename, DataFrame)
 
+    if nvar !== nothing && :nvar in Symbol.(names(df))
+        df = subset(df, :nvar => ByRow(==(nvar)))
+    end
+    
+    if precision !== nothing && :precision in Symbol.(names(df))
+        df = subset(df, :precision => ByRow(==(precision)))
+    end
 
-typeof(stats)
+    if solvers !== nothing && :solver in Symbol.(names(df))
+        df = subset(df, :solver => ByRow(in(solvers)))
+    end
 
-solvers = keys(stats)
-dfs = (stats[s] for s in solvers)
+    # Collect solvers and problems
+    solvers  = unique(df.solver)
+    problems = unique(df.problem)
 
+    metrics = [:iter, :elapsed_time, :neval_hprod]
+    titles  = ["Iterations", "Elapsed time (s)", "Neval hprod"]
 
+    plt = plot(layout=(1,3), size=(1500, 500), legend=:bottomright, framestyle=:box, margin=10Plots.mm)
 
-plt = plot(layout = (1, 2), size=(1000, 600))
+    for (j, metric) in enumerate(metrics)
 
+        println("metric= ", metric)
 
-for (solver, df) in stats
+        # ratios per solver
+        ratios = Dict(s => Float64[] for s in solvers)
 
-    println(propertynames(df))
+        for prob in problems
+            sub = df[df.problem .== prob, :]
 
+            # select only converged runs
+            solved = subset(sub, :status => ByRow(==("first_order")))
+            
+            # if all solvers failed to solve a problem
+            if nrow(solved) == 0 || !(metric in Symbol.(names(solved)))
+                for s in solvers
+                    push!(ratios[s], Inf)
+                end
+                continue
+            end
 
-    # Filter only solved runs
-    solved_df = filter(:status => ==(:first_order), df)
+            best = minimum(solved[:, metric])
 
-    # Now you have only the rows where the solver converged properly
-    iterations = solved_df[:, :iter]
-    elapsed_time = solved_df[:, :elapsed_time]
+            for s in solvers
+                row = filter(:solver => ==(s), solved)
+                if nrow(row) == 0
+                    push!(ratios[s], Inf)
+                else
+                    push!(ratios[s], row[1, metric] / best)
+                end
+            end
+        end
 
-    # Sort for empirical CDF
-    sorted_iters = sort(iterations)
-    sorted_time = sort(elapsed_time)
+        # extend each line to the maximum ratio
+        allvals = vcat(values(ratios)...)
+        finite_vals = filter(isfinite, allvals)
+        ratio_max = 1.05 * maximum(finite_vals) 
 
-    portion_solved = (1:length(sorted_iters)) ./ length(df[:, :status])
+        for (solver, rvals) in ratios
+            finite_rvals = sort(filter(isfinite, rvals))
+            portion = (1:length(finite_rvals)) ./ length(problems)
 
-    println("portion solved= ", portion_solved)
+            # extend the step horizontally to ratio_max
+            if !isempty(finite_rvals)
+                xvals = vcat(finite_rvals, ratio_max)
+                yvals = vcat(portion, portion[end])
+            else
+                # all failures, plot a horizontal line at 0
+                xvals = [1.0, ratio_max]
+                yvals = [0.0, 0.0]
+            end
 
-    # Plot (number iterations vs portion solved)
-    plot!(plt[1, 1], sorted_iters, portion_solved, linetype=:steppost, label=String(solver))
-    plot!(plt[1, 2], sorted_time, portion_solved, linetype=:steppost, label=String(solver))
-end
+            plot!(plt[j], xvals, yvals,
+                  linetype=:steppost, label=solver,
+                  xlabel=titles[j], xaxis=:log, ylabel="Portion solved")
+        end
+    end
 
     display(plt)
+    return plt
+end
 
 
+# solvers = [
+#     "trunk_cg", 
+#     "trunk_lbfgs_2", 
+#     "trunk_lbfgs_50",
+#     "trunk_lbfgs_100",
+# ]
+
+# solvers = [
+#     "trunk_cg", 
+#     "trunk_diom_2", 
+#     "trunk_diom_5", 
+#     "trunk_diom_50",
+#     "trunk_diom_100",
+# ]
+
+solvers = [
+    "trunk_cg", 
+    "trunk_lbfgs_100",
+    "trunk_diom_100",
+]
 
 
-# problems = keys(df)
-# println(problems)
-# df = (df[nlp] for nlp in problems)
-
-
-# println(first(df))
-
-# for stats in df
-#     println(stats)
-# end
-
-
+performance_profiles("benchmark_n500_float64.csv"; nvar=500, precision="Float64", solvers=solvers)

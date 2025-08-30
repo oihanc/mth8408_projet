@@ -1,0 +1,540 @@
+---
+title: "Rapport de projet - phase 3"
+subtitle: "MTH8408"
+author:
+  - name: Oihan Cordelier, Oussama Mouhtal
+    email: oihan.cordelier@polymtl.ca, oussama-2.mouhtal@polymtl.ca
+    affiliation:
+      - name: Polytechnique Montréal
+format:
+  pdf:
+    keep-tex: false
+    documentclass: article
+    include-in-header:
+      - text: |
+            \usepackage{xspace}
+    geometry:
+      - margin=1in
+    papersize: letter
+    colorlinks: true
+    urlcolor: blue
+engine: julia
+---
+
+
+
+```{julia}
+#| echo: false
+#| output: false
+using Pkg
+
+
+Pkg.activate("projet_env")
+
+
+# Pkg.add("ADNLPModels")
+# Pkg.add("NLPModels")
+# Pkg.add("Krylov")
+# Pkg.add("LinearOperators")
+# Pkg.add("SolverTools")
+# Pkg.add("SolverCore")
+# Pkg.add("OptimizationProblems")
+# Pkg.add("SolverBenchmark")
+# Pkg.add("NLPModelsIpopt")
+# Pkg.add("JLD2")
+# Pkg.add("Plots")
+# Pkg.add("ProgressBars")
+
+
+using LinearAlgebra, NLPModels , ADNLPModels, Printf, LinearOperators, Krylov
+using OptimizationProblems, OptimizationProblems.ADNLPProblems, JSOSolvers, SolverTools, SolverCore, SolverBenchmark, NLPModelsIpopt
+using JLD2, Plots
+
+
+using  SuiteSparseMatrixCollection, MatrixMarket
+
+
+using DataFrames, CSV
+
+
+# include("diom_tr.jl")
+include("TrunkSolverUpdate.jl")
+# include("TRSolver2.jl")
+
+
+```
+
+
+## Lien GitHub
+Ce projet est accessible sur le dépot GitHub au lien suivant : [https://github.com/oihanc/mth8408_projet](https://github.com/oihanc/mth8408_projet).
+
+
+# Description de la problématique
+Le gradient conjugué est une méthode répandue pour résoudre les modèles quadratiques des algorithmes de région de confiance, cependant le CG souffre de perte d'orthogonalisation. Bourhis et al. (2019) ont démontré que CG revient à faire L-BFGS avec une mémoire de 1. L'idée est donc de vérifier si L-BFGS avec une mémoire supérieure à 1 aiderait l'efficacité des algorithmes de région de confiance. Bourhis et al. ont déjà démontré qu'augmenter la mémoire aide à résoudre les problèmes quadratiques avec moins d'itérations. Similairement, une autre approche pour résoudre les problèmes des modèles quadratiques est d’utiliser DIOM. Il s’agit d’une approche similaire à CG, cependant en apportant des corrections pour l’orthogonalisation.
+
+
+# Description des difficultés rencontrées et comment les surmonter
+- Efficacité du code : puisque l’objectif de ce projet était de faire une analyse comparative entre les différentes approches, il était nécessaire d’avoir du code efficace, flexible et compatible avec les autres librairies Julia d’optimisation existantes. Pour y parvenir, nous avons d’abord écrit du code « brouillon » pour valider notre compréhension, puis nous nous sommes inspirés des librairies existantes pour écrire des fonctions compatibles avec les outils tels que SolverCore et SolverBenchmark. Finalement, nous avons tenté une autre approche, où nous avons surchargé les fonctions de JSOSolvers et Krylov afin de potentiellement faire des ajouts à ces librairies. De plus, nous avons pris note des retours de la phase 1 et 2, particulièrement pour rendre le code compatible avec le type Float128 et réduire le nombre d’allocations en mémoire.
+- Compatibilité entre les librairies : comme mentionné précédemment, pour la phase 3, nous nous sommes essayés à rendre nos codes compatibles avec les librairies existantes. À titre d’exemple, nous avons surchargé les fonctions de JSOSolvers et Krylov pour pouvoir utiliser le solveur trunk (de JSOSolvers) avec notre implémentation L-BFGS avec région de confiance et DIOM avec région de confiance. Cela nous a permis de tester une approche plus similaire à celle utilisée dans Bourhis et al., 2019.
+
+
+# Description de ce qui a été accompli
+
+
+## Par rapport au cahier du GERAD (Bourhis et al., 2019) : 
+- Analyse comparative sur des problèmes quadratiques sur base de temps ainsi que la valeur du modèle quadratique pour CG et L-BFGS avec région de confiance.
+- Utilisation d’un autre sous-solveur DIOM, modifié pour être compatible avec la contrainte de rayon de confiance.
+- Des tests numériques sur des problèmes provenant de la librairie OptimizationProblems. 
+
+
+## Par rapport à la phase 2 : 
+- Implémentation de DIOM avec contrainte de région de confiance
+- Implémentaiton de L-BFGS revisitée. Une structure workspace est d’abord initialisée avant de lancer le solveur. Cela permet de réduire l’allocation en mémoire.
+- Surcharge de la fonction trunk de JSOSolvers. En plus de CG, il est possible d’utiliser L-BFGS ainsi que DIOM pour résoudre le sous-problème d’optimisation.
+- Tests numériques avec une précision numérique plus élevée en utilisant le type Float128.
+
+---
+
+# Analyse détaillée - Résolution du sous problème quadratique
+
+## Contexte et notations 
+
+
+On considère le système linéaire $Ax=b$.
+
+
+## Méthode des gradients conjugués (CG)
+
+
+Hypothèse : $A$ **HPD** (hermitienne définie positive).  
+Notations : $x_k$ itéré, $r_k=b-Ax_k$ résidu, $p_k$ direction de recherche.
+
+
+Mises à jour (Saad, *Iterative Methods for Sparse Linear Systems*, chap. 6) :
+$$
+\alpha_k=\frac{r_k^* r_k}{p_k^* A p_k},\qquad
+x_{k+1}=x_k+\alpha_k p_k,\qquad
+r_{k+1}=r_k-\alpha_k A p_k,
+$$
+$$
+\beta_{k+1}=\frac{r_{k+1}^* r_{k+1}}{r_k^* r_k},\qquad
+p_{k+1}=r_{k+1}+\beta_{k+1}p_k.
+$$
+Les directions $\{p_k\}$ sont $A$-conjuguées : $p_i^* A p_j=0$ pour $i\ne j$.
+
+
+## DIOM / IOM (orthogonalisation incomplète)
+
+
+**IOM(m)** construit une base $V_k=[v_1,\dots,v_k]$ de $\mathcal{K}_k(A,r_0)$ via une orthogonalisation **à fenêtre** de taille $m$ (on orthogonalise $v_{j+1}$ contre au plus $m$ prédécesseurs).  
+**DIOM** est la variante « directe » qui met à jour $x_k$ en se basant sur la projection $A V_k=V_{k} H_k + h_{k+1,k} v_{k+1}$ (Saad, *Iterative Methods for Sparse Linear Systems*, chap. 6).
+
+  
+Avec la factorisation $H_k = L_k U_k$, les **directions DIOM** se construisent par
+$$
+p_k^{\mathrm{diom}}
+= u_{kk}^{-1}\!\left(
+  v_k - \sum_{i=k-m+1}^{k-1} u_{ik}\, p_i^{\mathrm{diom}}
+\right),
+$$
+où $m$ est la taille de la mémoire et $u_{i,k}$ les entrées de $U_k$ (pour $i \leq 0$, fixe $u_{ik}\, p_i^{\mathrm{diom}} = 0$).  
+La mise à jour des itérées est donnée par : $x_{k}=x_{k-1}+\zeta_{k}\,p_{k}^{\mathrm{diom}}$
+
+
+**Cas HPD.** Lorsque \(A\) est HPD et que $m=2$, IOM(2) reproduit **Lanczos** ; DIOM(2) coïncide alors, en arithmétique exacte, avec **FOM** (Galerkin) et donc avec **CG** (mêmes itérés) (Saad, *Iterative Methods for Sparse Linear Systems*, chap. 6).
+
+
+## Lien DIOM(2) – CG (arithmétique exacte)
+
+
+Hypothèses : \(A\) HPD, \(m=2\).
+
+
+- **Égalité des itérés** (Saad, *Iterative Methods for Sparse Linear Systems*, chap. 6):
+$$
+x_k^{\mathrm{cg}}=x_k^{\mathrm{diom}}\qquad k=0,1,\dots,n.
+$$
+
+
+- **Directions proportionnelles** (Saad, *Iterative Methods for Sparse Linear Systems*, chap. 6):
+$$
+\alpha_k = 1/u_{k+1,k+1} \quad \text{et}\quad p_k^{\mathrm{cg}} = \zeta_{k+1}\, u_{k+1,k+1}\, p_{k+1}^{\mathrm{diom}},\qquad k=0,1,\dots,n \hspace{1cm} (*).
+$$
+
+
+Intuition : DIOM et CG imposent la même condition de Galerkin dans l’espace de Krylov engendré par Lanczos ; seules les **normalisations** des directions diffèrent.
+
+
+---
+
+## L'algorithme `diom` avec région de confiance
+
+
+Notre implémentation de `diom` avec région de confiance est dans le ficher `diom_tr.jl`. Dans cette section, nous expliquerons l'implémentation de `diom` avec région de confiance en détails et on fera des tests l'implémentation est inspier de l'implémentation de la région de confiance dans CG. 
+
+
+## Région de confiance  avec DIOM
+
+
+- Dans l’algorithme `diom`, les itérés sont générés selon
+$$
+x_{k} = x_{k-1} + \zeta_k \, p_k^{\mathrm{diom}}.
+$$
+Utiliser $p_k^{\mathrm{diom}}$ pour chercher une racine $\sigma$ de $\|x_{k-1} + \sigma \, p_k^{\mathrm{diom}}\|^2 = \Delta^2$ est problématique, puisqu’ il faut comparer $\sigma$ à $\zeta_k$ qui n'a pas potentiellement un signe constant (La problématique dans ce cas qu'elle racine faut choisir la plus grande ou la plus petite ou peut être alterné suivant le signe de $\zeta_k$??). Il est donc préférable pour le moment de passer par la direction de `cg`, calculée
+à partir de la relation $(*)$, ce qui nécessite de stocker un vecteur supplémentaire
+en mémoire.
+
+
+- Il faut aussi calculer la norme de cette nouvelle direction (nommée dans l'algorithme `pcg`), ce qui correspond
+à une opération additionnelle. Lorsque $m=2$ et que la matrice est hermitienne, on peut mettre à jour $\|p_k^{\mathrm{diom}}\|$
+comme dans \texttt{CG}. En revanche, dans le cas général, puisque
+$$
+p_k^{\mathrm{diom}} = \frac{1}{u_{kk}}\!\left(
+  v_k - \sum_{i=k-m+1}^{k-1} u_{ik}\, p_i^{\mathrm{diom}}
+\right),
+$$
+et que les vecteurs $p_i$ ne sont pas orthogonaux entre eux, la mise à jour de
+$\|p_k^{\mathrm{diom}}\|$ nécessite de connaître les produits $p_i^\ast p_j$.
+Autrement dit, il faudrait disposer de toutes les entrées de la matrice
+$$
+P_k^\ast P_k \;=\; U_k^{-\ast} U_k^{-1}!!!
+$$
+
+
+## Test de la région de confiance dans `diom`
+
+
+Les deux premiers tests sont inspirés des tests de `cg` dans `krylov`.  
+Le premier test consiste à vérifier que la solution est de norme nulle même si `radius > 0`.  
+Le deuxième test permet de s’assurer que, lorsque la courbure est négative, la variable `indefinite` est bien mise à jour.  
+Enfin, le troisième test repose sur la remarque que la façon dont la norme du résidu est calculée ne prend pas en compte que le coefficient $u_{k,k}$ est écrasé par $1/\sigma$.
+
+
+```{julia}
+using Test
+
+
+function zero_rhs(n :: Int=10; FC=Float64)
+  A = rand(FC, n, n)
+  b = zeros(FC, n)
+  return A, b
+end
+
+
+for FC in (Float64, ComplexF64)
+  @testset "Data Type: $FC" begin
+    # Test radius > 0  and b^TAb=0
+    A, b = zero_rhs(FC=FC)
+    solver = DiomTRWorkspace(A, b)
+    diom!(solver, A, b,radius = 10 * real(one(FC)))
+    x, stats = solver.x, solver.stats
+    @test stats.status == "x is a zero-residual solution"
+    @test norm(x) == zero(FC)
+    @test stats.niter == 0
+
+
+    # Test radius > 0 and pᵀAp < 0
+    A = FC[
+    10.0 0.0 0.0 0.0;
+    0.0 8.0 0.0 0.0;
+    0.0 0.0 5.0 0.0;
+    0.0 0.0 0.0 -1.0
+    ]
+    b = FC[1.0, 1.0, 1.0, 0.1]
+    solver = DiomTRWorkspace(A, b)
+    diom!(solver, A, b; radius = 10 * real(one(FC)))
+    x, stats = solver.x, solver.stats
+    @test stats.indefinite == true
+
+
+    # Test residus finale
+    A = FC[
+    10.0 0.0 0.0 0.0;
+    0.0 8.0 0.0 0.0;
+    0.0 0.0 5.0 0.0;
+    0.0 0.0 0.0 -1.0
+    ]
+    b = FC[1.0, 1.0, 1.0, 0.1]
+    solver = DiomTRWorkspace(A, b)
+    diom!(solver, A, b; radius = 10 * real(one(FC)), history=true)
+    x, stats = solver.x, solver.stats
+    r_alg = stats.residuals[end]
+    r_true = norm(b - A * x)
+    rtol = sqrt(eps(real(one(FC))))
+    @test !isapprox(r_true, r_alg; rtol = rtol)     # Les deux résidu se différent à tolérance machine
+  end 
+end
+```
+
+
+## Proposition d’une méthode pour calculer $\|r_k\|$
+
+
+Supposons qu’à une itération $k$, la normalisation de la direction dans `diom` est faite de la façon suivante:
+$$
+\bar p_k^{\mathrm{diom}} = \sigma \!\left(
+  v_k - \sum_{i=k-m+1}^{k-1} u_{ik}\, p_i^{\mathrm{diom}}
+\right).
+$$
+où $\sigma$ est racine de $\|x_{k-1} + \sigma \, p_k^{\mathrm{diom}}\|^2 = \Delta^2.$
+Cette notation intermédiaire $\bar p_k^{\mathrm{diom}}$ permet de réutiliser la vraie direction $p_k^{\mathrm{diom}} = \frac{1}{u_{kk}}\!\left(v_k - \sum_{i=k-m+1}^{k-1} u_{ik}\, p_i^{\mathrm{diom}}\right)$ par la suite.
+
+
+L’itéré est donné par
+$$
+x_{k+1} = x_k + \zeta_k \bar p_k^{\mathrm{diom}}.
+$$
+Le résidu $r_k$ se calcule alors de la façon suivante :
+$$
+r_{k} = r_{k-1} - \zeta_k A \bar p_k^{\mathrm{diom}} 
+      = r_{k-1} - \zeta_k u_{k,k} \sigma A p_k^{\mathrm{diom}}.
+$$
+
+
+La matrice concaténant les directions de `diom` satisfait par définition :
+$$
+P_k = V_k U_k^{-1}.
+$$
+En multipliant par $A$, on obtient :
+$$
+A P_k = A V_k U_k^{-1}.
+$$
+Or, par la relation de récurrence d’Arnoldi :
+$$
+A V_k = V_k H_k + h_{k+1,k} v_{k+1} e_k^\top.
+$$
+Ainsi :
+$$
+A P_k = (V_k H_k + h_{k+1,k} v_{k+1} e_k^\top) U_k^{-1} 
+      = (V_k L_k U_k + h_{k+1,k} v_{k+1} e_k^\top) U_k^{-1} 
+      = V_k L_k + h_{k+1,k} v_{k+1} e_k^\top U_k^{-1}.
+$$
+
+
+En particulier,
+$$
+A p_k^{\mathrm{diom}} = A P_k e_k 
+= (V_k L_k + h_{k+1,k} v_{k+1} e_k^\top U_k^{-1}) e_k 
+= v_k + \frac{h_{k+1,k}}{u_{kk}} v_{k+1}.
+$$
+
+
+## Expression finale du résidu
+
+
+On en déduit :
+$$
+r_{k} = r_{k-1} - \zeta_k \sigma u_{k,k}\!\left(v_k + \frac{h_{k+1,k}}{u_{kk}} v_{k+1}\right).
+$$
+
+
+En utilisant la relation (Dans le livre de Saad Chapitre 6)
+$$
+r_{k-1} = -\, \zeta_{k-1} \frac{h_{k,k-1}}{u_{k-1,k-1}} v_{k},
+$$
+on obtient:
+$$
+r_{k} = \left(-\zeta_{k-1} \frac{h_{k,k-1}}{u_{k-1,k-1}} - \zeta_k \sigma u_{k,k}\right) v_{k}   - \zeta_k \sigma h_{k+1,k} v_{k+1}.
+$$
+finalement utilsiant l’orthogonalité partielle des $v_i$, on obtient finalement :
+$$
+\|r_k\| = \sqrt{\left|\zeta_{k-1} \frac{h_{k,k-1}}{u_{k-1,k-1}} + \zeta_k \sigma u_{k,k}\right|^2 + \left| \zeta_k \sigma h_{k+1,k}\right|^2}.
+$$
+
+
+## Résultats expérimentaux pour des problèmes quadratiques
+
+
+L-BFGS et DIOM sont comparés avec CG sur 3 problèmes quadratiques construit à partir des matrices `494_bus`, `1138_bus` et `bcsstk16`. Le script ci-dessous permet de comparer CG, L-BFGS et DIOM sur des problèmes mals conditionnés. Les paramètres de mémoire sont variés pour illustrer leur influence.
+
+
+```julia
+{{< include benchmark_subsolvers.jl >}}
+```
+
+
+La norme du résidu et la valeur de l'objectif sont traçées par rapport au nombre d'itérations et le temps écoulé. En augmentant la mémoire, L-BFGS et DIOM converge en moins d'itération, cependant chaque itération devient plus couteuse. De plus, DIOM semble être plus efficace que L-BFGS.
+
+
+
+{{< pagebreak >}}
+
+
+### Matrice : 494_bus
+
+
+![Matrice 494_bus](subsolver_comparison/spy_494_bus.svg){width=50% fig-align="center"}
+![Comparaison de CG, L-BFGS et DION sur 494_bus](subsolver_comparison/cg_lbfgs_diom_comparison_494_bus.png){width=95% fig-align="center"}
+
+
+{{< pagebreak >}}
+
+
+### Matrice : 1138_bus
+
+
+![Matrice 494_bus](subsolver_comparison/spy_1138_bus.svg){width=50% fig-align="center"}
+![Comparaison de CG, L-BFGS et DION sur 1138_bus](subsolver_comparison/cg_lbfgs_diom_comparison_1138_bus.png){width=95% fig-align="center"}
+
+
+{{< pagebreak >}}
+
+
+### Matrice : bcsstk16
+
+
+![Matrice 494_bus](subsolver_comparison/spy_bcsstk16.svg){width=50% fig-align="center"}
+![Comparaison de CG, L-BFGS et DION sur bcsstk16](subsolver_comparison/cg_lbfgs_diom_comparison_bcsstk16.png){width=95% fig-align="center"}
+
+
+---
+
+
+{{< pagebreak >}}
+
+
+
+# Analyse détaillée - Optimisation sous région de confiance
+L’objectif derrière cette analyse est d’évaluer la pertinence d’utiliser L-BFGS et DIOM pour résoudre les sous-problèmes des modèles quadratiques des méthodes d’optimisation quadratiques. Les approches ont d’abord été testé sur les 5 fonctions tests initialement proposées dans le cahier du GERAD (Bourhis et al., 2019).
+
+
+50 problèmes appartenant à OptimizationProblems et dont les dimensions sont variables ont été sélectionnés. De plus, les analyses ont été faites en faisant varier le paramètre de mémoire de L-BFGS et DIOM et faisant varier la précision de l’arithmétique flottant (Float32, Float64 et Float128). À noter que pour certains problèmes, la dimension du problème est contrainte par un multiple. Dans ces cas-là, la dimension des problèmes est minimalement réduite pour respecter la contrainte. La tolérance absolue et relative sont toujours fixées à la racine carrée de l’epsilon machine du type du nombre à virgule flottante.
+
+
+
+Le script ci-dessous permet d'exécuter les tests pour différents solveurs, ainsi que différents type de *Float*. Les résultats sont enregistrés dans un fichier `.csv` pour de futurs analyses. 
+
+
+```julia
+{{< include benchmark_solvers.jl >}}
+```
+
+
+À partir du fichier `.csv`, il est possible de tracer des profiles de performances. Un problème est dit résolu si sont statut de convergence est `:first_order`. La portion de problèmes résolus est comparé contre le nombre d'itération de la boucle extérieure, le temps requis ainsi que le nonbre d'opération matricielle sur la hessienne. Le script utilisé pour tracer les profiles de performance est le suivant : 
+
+
+```julia
+{{< include performance_profile.jl >}}
+```
+
+
+## Résultats
+
+
+### N = 500 / Float32
+
+
+![Comparaison entre CG et L-BFGS](solver_comparison/cg_lbfgs_float32.svg){width=100% fig-align="center"}
+
+
+![Comparaison entre CG et DIOM](solver_comparison/cg_diom_float32.svg){width=100% fig-align="center"}
+
+
+{{< pagebreak >}}
+
+
+### N = 500 / Float64
+
+
+![Comparaison entre CG et L-BFGS](solver_comparison/cg_lbfgs_float64.svg){width=100% fig-align="center"}
+
+
+![Comparaison entre CG et DIOM](solver_comparison/cg_diom_float64.svg){width=100% fig-align="center"}
+
+
+Les résultats sont particulièrement bons pour les problèmes de dimension $n = 500$ et en utilisant les `Float64`. La figure suivante compare la meilleure configuration de L-BFGS avec DIOM tout en gardant CG comme référence.
+
+
+![Comparaison entre CG, L-BFGS et DIOM, avec n = 500 et Float64](solver_comparison/cg_lbfgs_diom_float64.svg){width=100% fig-align="center"}
+
+
+{{< pagebreak >}}
+
+
+### N = 100 / Float128
+
+
+![Comparaison entre CG et L-BFGS](solver_comparison/cg_lbfgs_float128.svg){width=100% fig-align="center"}
+
+
+![Comparaison entre CG et DIOM](solver_comparison/cg_diom_float128.svg){width=100% fig-align="center"}
+
+
+{{< pagebreak >}}
+
+
+### 5 problèmes du cahier du GERAD (Bourhis et al., 2019)
+
+
+![Comparaison entre CG et L-BFGS, avec N = 100 et Float128](solver_comparison/cg_lbfgs_original5.svg){width=100% fig-align="center"}
+
+
+![Comparaison entre CG et DIOM, avec N = 100 et Float128](solver_comparison/cg_diom_original5.svg){width=100% fig-align="center"}
+
+
+{{< pagebreak >}}
+
+
+# Notre perspective sur le projet et interprétation
+Les tests de la première partie démontrent qu’augmenter le paramètre de mémoire permet de réduire le nombre d’itérations requit pour résoudre le sous-problème quadratique. Les sous-solveurs quadratiques font un produit matriciel avec la hessienne par itération. Donc si le nombre d’itération est réduit, le nombre de produit matriciel devrait aussi l’être. Réduire le nombre d’opération matriciel devient particulièrement intéressant lorsque celui-ci est coûteux, par exemple lorsque la précision est élevée (Float128).
+
+
+Concernant les résultats de la deuxième partie, nous constater les éléments suivants : pour les problèmes qui se résoud en quelques itérations, le coût d'utiliser L-BFGS ou DIOM n'est pas justifié. Cependant, pour les problèmes qui prend de nombreuses itérations, il est possible de constater que L-BFGS et DIOM permettent de réduire le nombre de produit avec la hessienne, ce qui pourrait justifier la réduction de temps pour certaines des instances. À titre d'exemple, les 5 problèmes tests proposés dans le cahier du GERAD (Bourhis et al., 2019) font de nombreux produits avec les hessiennes, ce qui expliquerait qu'il y ait une réduction de temps. Le tableau ci-dessous liste les statistiques sur le problème *nondquar*. Il est possible de constater que le nombre de produits avec la hessienne est considérablement réduit lorsque la mémoire est augmentée.
+
+```{julia}
+
+df = CSV.read("benchmark_original.csv", DataFrame)
+df = subset(df, :precision => ByRow(==("Float128")))
+df = subset(df, :problem => ByRow(==("nondquar")))
+df = subset(df, :solver => ByRow(x -> occursin("trunk", x)))
+df = df[:, [:problem, :solver, :neval_obj, :neval_grad, :neval_hprod, :elapsed_time]]
+df
+
+
+```
+
+Le projet a été très formatteur : il nous a permis de nous familiariser avec les méthodes de région de confiance, en plus de pousser notre compréhension du développement d'outils dans `Julia`.
+
+
+# Référence
+* Y. Saad, *Iterative Methods for Sparse Linear Systems*, 2nd edition, SIAM, 2003.  
+
+
+* Y. Saad, [*Practical use of some krylov subspace methods for solving indefinite and nonsymmetric linear systems*](https://doi.org/10.1137/0905015), SIAM journal on scientific and statistical computing, 5(1), pp. 203--228, 1984.
+"""
+
+
+{{< pagebreak >}}
+
+
+# Annexe
+
+
+## DIOM avec région de confiance
+
+
+```julia
+{{< include diom_tr.jl >}}
+```
+
+
+{{< pagebreak >}}
+
+
+## LBFGS avec région de confiance + *wrapper* autour de `trunk` de JSOSolvers
+
+
+```julia
+{{< include TrunkSolverUpdate.jl >}}
+```
+
+
+{{< pagebreak >}}
+
+
+## Notre implémentation de l'algorithme de région de confiance
+
+
+```julia
+{{< include TRSolverModule.jl >}}
+```

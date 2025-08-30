@@ -1,6 +1,0 @@
-
-
-
-
-When reset the LBFGSOperator -> similar result as CG (sometimes even better). If the operator isn't reset, then results becomes worse
--> if previous approximation was bad -> new one will probably be bad too.
