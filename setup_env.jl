@@ -10,7 +10,8 @@ packages = [
     "CSV",
     "DataFrames",
     "Printf",
-    "Conda"
+    "Conda",
+    "PyCall"
 ]
 
 for pkg in packages
@@ -21,10 +22,15 @@ for pkg in packages
     end
 end
 
-# install matplotlib and PyPlot
+
 using Conda
-Conda.add("matplotlib")
+Conda.add("python=3.11")
+Conda.add("matplotlib=3.10.0")
+
+ENV["PYTHON"] = ""
+Pkg.build("PyCall")
+
 Pkg.add("PyPlot")
 
 # install Krylov local fork
-Pkg.develop(path="/Krylov.jl")      # adjust path if required
+Pkg.develop(path="Krylov.jl")      # adjust path if required
