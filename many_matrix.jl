@@ -11,6 +11,7 @@ using DataFrames
 
 using Krylov
 
+using PyCall
 using PyPlot
 using Printf
 
@@ -104,16 +105,16 @@ function benchmark_krylov(A, b; solver = :cg, mem=nothing)
     elapsed_time = Float64[0.0]
 
     # compute quadratic objective
-    function compute_obj(x, A, g)
-        return dot(g, x) + 0.5 * dot(x, A*x)
-    end
+    # function compute_obj(x, A, g)
+    #     return dot(g, x) + 0.5 * dot(x, A*x)
+    # end
 
-    function objective_callback(workspace)
-        push!(objectives, compute_obj(workspace.x, A, b))
+    # function objective_callback(workspace)
+    #     push!(objectives, compute_obj(workspace.x, A, b))
 
-        timing_callback(workspace)
-        return false
-    end
+    #     timing_callback(workspace)
+    #     return false
+    # end
 
     
     function timing_callback(workspace)
@@ -131,10 +132,11 @@ function benchmark_krylov(A, b; solver = :cg, mem=nothing)
     start_time = time()
 
     # perform problem's first trial. Save objective values
-    krylov_solve!(krylov_solver, A, -b; itmax=10*n, history=true, callback=objective_callback)
+    krylov_solve!(krylov_solver, A, -b; itmax=10*n, history=true, callback=timing_callback)
     stats = krylov_solver.stats
 
     first_res = copy(stats.residuals)
+    objectives = copy(stats.quadras)
     
     if solver == :cg
         krylov_solver = krylov_workspace(Val(solver), A, -b)
@@ -150,17 +152,27 @@ function benchmark_krylov(A, b; solver = :cg, mem=nothing)
     krylov_solve!(krylov_solver, A, -b; itmax=10*n, history=true, callback=timing_callback)
     stats = krylov_solver.stats
 
+    # check residuals
     if length(first_res) != length(stats.residuals)
         throw(string("First and second run residuals do not have the same dimensions: ", length(first_res), " vs ", length(stats.residuals), "."))
     end
     error = norm(first_res .- stats.residuals)
     if error > sqrt(eps())
-        throw("Residual mismatch between first and second run.")
+        println(string("Residual mismatch between first and second run. Error = ", error))
+    end
+
+    # check objective values
+    if length(objectives) != length(stats.quadras)
+        throw(string("First and second run objectives do not have the same dimensions: ", length(first_res), " vs ", length(stats.residuals), "."))
+    end
+    error = norm(objectives .- stats.quadras)
+    if error > sqrt(eps())
+        println(string("Objective mismatch between first and second run. Error = ", error))
     end
 
     df = DataFrame(
         residuals = stats.residuals,
-        objectives = objectives,
+        objectives = stats.quadras,
         elapsed_time = elapsed_time
     )
 
@@ -229,4 +241,4 @@ solvers = [
 ]
 
 
-test_on_collection(3, solvers)
+test_on_collection(100, solvers)
