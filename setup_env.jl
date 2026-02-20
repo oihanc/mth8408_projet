@@ -10,7 +10,8 @@ packages = [
     "CSV",
     "DataFrames",
     "Printf",
-    "Conda"
+    "Conda",
+    "LinearOperators",
 ]
 
 for pkg in packages
@@ -27,4 +28,5 @@ Conda.add("matplotlib")
 Pkg.add("PyPlot")
 
 # install Krylov local fork
-Pkg.develop(path="/Krylov.jl")      # adjust path if required
+Pkg.develop(path="/home/corde/Krylov.jl")           # adjust path if required
+Pkg.develop(path="/home/corde/JSOSolvers.jl")       # adjust path if required
