@@ -316,8 +316,6 @@ function benchmark_krylov(A, b; solver = :cg, mem=nothing)
 
     # perform problem's first trial. Save objective values
     
-
-    # krylov_solve!(krylov_solver, A, -b; M=, ldiv=false, itmax=n, history=true, callback=objective_callback) # itmax=10*n
     krylov_solve!(krylov_solver, A, -b; ldiv=false, itmax=2*n, history=true, callback=objective_callback, atol=1e-6, rtol=1e-6) # itmax=10*n
 
     println("krylov solve done")
@@ -380,12 +378,9 @@ function draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_data)
         dict = convex_data[key]
         residuals = dict.residuals
         objectives = dict.objectives
-        elapsed_time = dict.elapsed_time
 
         ax[1].plot(residuals, linewidth=0.5, label=key)
         ax[2].plot(objectives, linewidth=0.5)
-        # ax[2, 1].plot(elapsed_time*1e3, residuals, linewidth=0.5)
-        # ax[2, 2].plot(elapsed_time*1e3, objectives, linewidth=0.5)
 
     end
 
@@ -395,13 +390,6 @@ function draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_data)
 
     ax[2].set_xlabel("Iteration")
     ax[2].set_ylabel("Objective value")
-
-    # ax[2, 1].set_xlabel("Elapsed time (ms)")
-    # ax[2, 1].set_ylabel("Residuals")
-    # ax[2, 1].set_yscale("log")
-
-    # ax[2, 2].set_xlabel("Elapsed time (ms)")
-    # ax[2, 2].set_ylabel("Objective value")
 
     ax[1].legend()
 
