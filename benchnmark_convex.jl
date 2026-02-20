@@ -190,17 +190,18 @@ end
 
 # println(methods(krylov_solve!))
 
-
-function test_on_collection(num_convex, solvers)
+function test_on_matrix(group, name, solvers)
     ssmc = ssmc_db()
+
+    ssmc = ssmc_db()
+    ssmc_matrices(ssmc, group, name)
+
     # filter real, symmetric, positive definite
     sel = ssmc[(ssmc.numerical_symmetry .== 1) .&
                (ssmc.positive_definite .== true) .&
                (ssmc.real .== true), :]
 
-    println("Found $(size(sel,1)) candidate matrices")
-    
-    sel = first(sel, num_convex)
+    # println("Found $(size(sel,1)) candidate matrices")
 
     # fetch/download them (if not already)
     # download all of them at once
@@ -212,64 +213,69 @@ function test_on_collection(num_convex, solvers)
     directory = "benchmark_convex_2026/"
     mkpath(directory)
 
-    for (i, matmeta) in enumerate(eachrow(sel))
+    # matmeta has fields “group” and “name”
+    # pname = string(matmeta.group, "_", matmeta.name)
+    # pname = string(group, "_", name)
+    # path = paths[i]  # directory containing .mtx
+    # file = joinpath(path, matmeta.name * ".mtx")
 
-        # matmeta has fields “group” and “name”
-        # pname = string(matmeta.group, "_", matmeta.name)
-        # path = paths[i]  # directory containing .mtx
-        # file = joinpath(path, matmeta.name * ".mtx")
+    # download matrix only when it's its time to benchmark it
+    
+    # to chose 
+    pname = string(group, "_", name)
+    path = fetch_ssmc(group, name; format="MM")
+    file = joinpath(path, name * ".mtx")
 
-        # download matrix only when it's its time to benchmark it
-        pname = string(matmeta.group, "_", matmeta.name)
-        path = fetch_ssmc(matmeta.group, matmeta.name; format="MM")
-        file = joinpath(path, matmeta.name * ".mtx")
+    # pname = string(matmeta.group, "_", matmeta.name)
+    # path = fetch_ssmc(matmeta.group, matmeta.name; format="MM")
+    # file = joinpath(path, matmeta.name * ".mtx")
 
-        println("------- (", i, "/", num_convex, ")  name = ", pname, " -------")
+    # println("------- (", i, "/", num_convex, ")  name = ", pname, " -------")
 
-        # read matrix
-        A = MatrixMarket.mmread(file)
-        A = Symmetric(A)
+    # read matrix
+    A = MatrixMarket.mmread(file)
+    # A = MatrixMarket.mmread("matrices/mesh2em5/mesh2em5.mtx")
+    A = Symmetric(A)
 
-        n, n = size(A)
-        b = ones(n) ./ √n
+    n, n = size(A)
+    b = ones(n) ./ √n
 
-        convex_results = Dict()
+    convex_results = Dict()
 
-        for sol in solvers
-            
-            solver = sol[1]
-            mem = sol[2]
-            solver_name = sol[3]
+    for sol in solvers
+        
+        solver = sol[1]
+        mem = sol[2]
+        solver_name = sol[3]
 
-            println("solver = ", solver, "  |  mem = ", mem)
+        println("solver = ", solver, "  |  mem = ", mem)
 
-            # try
-                # perform blank run for the first iteration for accurate elapsed time measurement
-                if i == 1
-                    _ = benchmark_krylov(A, b, solver=solver, mem=mem)
-                end
-
-                df = benchmark_krylov(A, b, solver=solver, mem=mem)
-
-                # save data to .csv file
-                result_file = joinpath(directory, string(pname, "_", solver_name, ".csv"))
-                CSV.write(result_file, df)
-
-                convex_results[solver_name] = df
-
-            # catch err
-            #     # println("Caught error thrown at $(err.file):$(err.line)")
-            #     println("error ", err)
+        # try
+            # perform blank run for the first iteration for accurate elapsed time measurement
+            # if i == 1
+            #     _ = benchmark_krylov(A, b, solver=solver, mem=mem)
             # end
-        end
 
-        plot_path = joinpath(directory, "$pname.pdf")
-        plot_name = pname
-        convex_dim = n
-        convex_cond = cond(Array(A), 2)
-        draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_results)
+            df = benchmark_krylov(A, b, solver=solver, mem=mem)
 
+            # save data to .csv file
+            result_file = joinpath(directory, string(pname, "_", solver_name, ".csv"))
+            CSV.write(result_file, df)
+
+            convex_results[solver_name] = df
+
+        # catch err
+        #     # println("Caught error thrown at $(err.file):$(err.line)")
+        #     println("error ", err)
+        # end
     end
+
+    plot_path = joinpath(directory, "$pname.pdf")
+    plot_name = pname
+    convex_dim = n
+    convex_cond = cond(Array(A), 2)
+    draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_results)
+
 end
 
 
@@ -309,7 +315,10 @@ function benchmark_krylov(A, b; solver = :cg, mem=nothing)
     start_time = time()
 
     # perform problem's first trial. Save objective values
-    krylov_solve!(krylov_solver, A, -b; itmax=n, history=true, callback=objective_callback) # itmax=10*n
+    
+
+    # krylov_solve!(krylov_solver, A, -b; M=, ldiv=false, itmax=n, history=true, callback=objective_callback) # itmax=10*n
+    krylov_solve!(krylov_solver, A, -b; ldiv=false, itmax=2*n, history=true, callback=objective_callback, atol=1e-6, rtol=1e-6) # itmax=10*n
 
     println("krylov solve done")
 
@@ -330,7 +339,7 @@ function benchmark_krylov(A, b; solver = :cg, mem=nothing)
     start_time = time()
 
     # perform peroblem' second trial. Measure elapsed time. Do not save objective values.
-    krylov_solve!(krylov_solver, A, -b; itmax=n, history=true, callback=timing_callback)
+    krylov_solve!(krylov_solver, A, -b; ldiv=false, itmax=2*n, history=true, callback=timing_callback, atol=1e-6, rtol=1e-6)
     stats = krylov_solver.stats
 
     if length(first_res) != length(stats.residuals)
@@ -412,4 +421,17 @@ solvers = [
     (:lbfgs, 200, "lbfgs_200"),
 ]
 
-test_on_collection(3, solvers)
+# dimension ~ 1000
+# test_on_matrix("HB", "bcsstk09", solvers)   # low cond number E^3
+# test_on_matrix("HB", "bcsstm08", solvers)   # medium cond number E^6
+# test_on_matrix("HB", "nos2", solvers)       # high cond number E^9
+
+
+# test_on_matrix("Pothen", "mesh2em5", solvers)   # low cond number E^2
+test_on_matrix("Boeing", "bcsstk34", solvers)   # medium cond number E^4
+# test_on_matrix("HB", "494_bu", solvers)       # high cond number E^6
+
+# test_on_matrix("HB", "bcsstm07", solvers)   # low cond number E^3
+# test_on_matrix("HB", "494_bus", solvers)   # medium cond number E^6
+# test_on_matrix("HB", "plat362", solvers)       # high cond number E^9
+
