@@ -11,6 +11,7 @@ using DataFrames
 
 using Krylov
 
+using Arpack
 using PyPlot
 using Printf
 
@@ -18,9 +19,9 @@ using LinearOperators
 
 
 mutable struct LBFGSStats
-    niter::Int8
+    niter::Int
     residuals::Vector{Float64}
-    elapsed_time::Vector{Float64}
+    quadras::Vector{Float64}
 end
 
 
@@ -49,7 +50,7 @@ mutable struct LBFGSWorkspace{T, FC <: T, S <: AbstractVector{T}} <: KrylovWorks
         sk = zeros(T, n)
         yk = zeros(T, n)
         x = zeros(T, n)
-        stats = LBFGSStats(0, ones(Float64, 1), zeros(Float64, 1))     # Review
+        stats = LBFGSStats(0, Float64[], Float64[])     # Review
         return new{T,FC,S}(n, n, mem, Hk, x0, pk, gk, dk, bk, sk, yk, x, stats)
     end
 end
@@ -77,88 +78,99 @@ end
 
 
 function lbfgs_tr!(
-    ws :: LBFGSWorkspace{T, FC, S}, 
-    A, 
-    b::AbstractVector{FC}; 
-    radius::T=zero(T), 
-    atol::T=√eps(T), 
-    rtol::T=√eps(T), 
-    itmax::Int=0, 
-    verbose::Int=0, 
-    callback=workspace -> false) where {T<:AbstractFloat, FC<:T, S<:AbstractVector{FC}}
-    
+    ws::LBFGSWorkspace{T,FC,S},
+    A,
+    b::AbstractVector{FC};
+    radius::T = zero(T),
+    atol::T = √eps(T),
+    rtol::T = √eps(T),
+    itmax::Int = 0,
+    verbose::Int = 0,
+    callback = ws -> false
+) where {T<:AbstractFloat,FC<:T,S<:AbstractVector{FC}}
+
     reset!(ws.Hk)
 
-    copyto!(ws.gk, b)
-    gnorm0 = gnormk = norm(ws.gk)
+    copyto!(ws.gk, -b)
 
-    tolerance = atol + rtol*gnorm0
+    gnorm0_sq = dot(ws.gk, ws.gk)
+    tol_sq = (atol + rtol*sqrt(gnorm0_sq))^2
 
     if itmax == 0
-        itmax = 2*ws.n
+        itmax = 2ws.n
     end
 
     fill!(ws.pk, zero(T))
-    alphak = zero(T)
 
+    #resize!(ws.stats.residuals, 0)
     callback(ws)
+    push!(ws.stats.residuals, sqrt(gnorm0_sq))
+    quadra = 0
+    
+    k = 0
+    α = zero(T)
+    gkd = zero(T)
+    while true
 
-    k = 1
-    done = false
+        # d = -H g
+        mul!(ws.dk, ws.Hk, ws.gk)
+        @. ws.dk = -ws.dk
 
-    while !done
+        # A d
+        mul!(ws.bk, A, ws.dk)
 
-        push!(ws.stats.residuals, gnormk)
-
-        mul!(ws.dk, -ws.Hk, ws.gk)  # compute search direction
-        mul!(ws.bk, A, ws.dk)       # compute curvature
+        quadra += 0.5*α*gkd
+        push!(ws.stats.quadras, quadra)
 
         dkbk = dot(ws.dk, ws.bk)
+        gkd  = dot(ws.gk, ws.dk)
 
-        # handle negative curvature
-        if radius > 0.0 && dkbk <= 0
-            alphak = -sign(dot(ws.gk, ws.dk))*2*radius/norm(ws.dk)
+        if radius > zero(T) && dkbk <= zero(T)
+            nd = norm(ws.dk)
+            α = -sign(gkd) * 2radius / nd
         else
-            alphak = -dot(ws.gk, ws.dk)/dkbk    # compute search step
+            α = -gkd / dkbk
         end
         
-        ws.sk .= alphak .* ws.dk    # scale search direction
-        ws.pk .+= ws.sk             # update current point
+        # s = α d   (sans allocation)
+        ws.sk .= α * ws.dk
 
-        if radius > 0 && norm(ws.pk) >= radius
-            ws.pk .-= ws.sk
-            pksk = dot(ws.pk, ws.sk)
-            sksk = dot(ws.sk, ws.sk)
+        # p += s
+        ws.pk .+= ws.sk
 
-            tau = (-pksk + sqrt(pksk^2 + sksk*(radius^2 - dot(ws.pk, ws.pk))))/sksk
-
-            return ws.pk .+ tau .* ws.sk, nothing # TODO: add SimpleStats
+        if radius > zero(T)
+            pk2 = dot(ws.pk, ws.pk)
+            if pk2 >= radius^2
+                @. ws.pk -= ws.sk
+                pksk = dot(ws.pk, ws.sk)
+                sk2  = dot(ws.sk, ws.sk)
+                τ = (-pksk + sqrt(pksk^2 + sk2*(radius^2 - dot(ws.pk,ws.pk)))) / sk2
+                return ws.pk .+ τ .* ws.sk, ws.stats
+            end
         end
-        
-        ws.yk .= alphak .* ws.bk    # compute gradient update
-        ws.gk .+= ws.yk             # update gradient
-        
-        gnormk = norm(ws.gk)
+
+        # y = α A d
+        ws.yk .= α * ws.bk
+
+        # g += y
+        ws.gk .+= ws.yk
+
+        gnorm_sq = dot(ws.gk, ws.gk)
         k += 1
 
-        if gnormk <= tolerance
-            done = true
-        elseif k >= itmax
-            done = true
+        if gnorm_sq <= tol_sq || k >= itmax
+            break
         end
 
-        # update the inverse Hessian approximation
-        if !done
-            push!(ws.Hk, ws.sk, ws.yk)
-        end
+        push!(ws.stats.residuals, sqrt(gnorm_sq))
+        push!(ws.Hk, ws.sk, ws.yk)
 
-        ws.x .= ws.pk
+        copyto!(ws.x, ws.pk)
+
         callback(ws)
     end
 
-    push!(ws.stats.residuals, gnormk)
-
-    return ws.pk, ws.stats # TODO: add SimpleStats
+    return ws.pk, ws.stats
 end
 
 
@@ -178,7 +190,7 @@ function krylov_solve!(
     kwargs...
 ) where {T}
 
-    x, stats = lbfgs_tr!(ws, A, -1 .* b, radius=radius, atol=atol, rtol=rtol, itmax=itmax, verbose=verbose, callback=callback)
+    x, stats = lbfgs_tr!(ws, A,  b, radius=radius, atol=atol, rtol=rtol, itmax=itmax, verbose=verbose, callback=callback)
 
     ws.x = x
     ws.stats = stats
@@ -190,55 +202,48 @@ end
 
 # println(methods(krylov_solve!))
 
-function test_on_matrix(group, name, solvers)
+function test_on_matrix(group, name, solvers, T;
+                        precision_bits::Int = 0)
     ssmc = ssmc_db()
 
     ssmc = ssmc_db()
     ssmc_matrices(ssmc, group, name)
 
-    # filter real, symmetric, positive definite
-    sel = ssmc[(ssmc.numerical_symmetry .== 1) .&
-               (ssmc.positive_definite .== true) .&
-               (ssmc.real .== true), :]
-
-    # println("Found $(size(sel,1)) candidate matrices")
-
-    # fetch/download them (if not already)
-    # download all of them at once
-    # paths = fetch_ssmc(sel, format="MM")
-
-    results = Dict{String, Any}()
-
     # define and create saving directory
-    directory = "benchmark_convex_2026/"
+    if T == BigFloat
+        if precision_bits == 0
+            error("You must provide precision_bits for BigFloat.")
+        end
+        setprecision(BigFloat, precision_bits)
+        precision_tag = "big$(precision(BigFloat))"
+    elseif T == Float32
+        precision_tag = "fp32"
+    elseif T == Float64
+        precision_tag = "fp64"
+    else
+        precision_tag = string(T)
+    end
+
+    directory = joinpath("benchmark_convex_2026", precision_tag)
     mkpath(directory)
 
-    # matmeta has fields “group” and “name”
-    # pname = string(matmeta.group, "_", matmeta.name)
-    # pname = string(group, "_", name)
-    # path = paths[i]  # directory containing .mtx
-    # file = joinpath(path, matmeta.name * ".mtx")
 
     # download matrix only when it's its time to benchmark it
     
     # to chose 
-    pname = string(group, "_", name)
+    pname= string(group, "_", name)
     path = fetch_ssmc(group, name; format="MM")
     file = joinpath(path, name * ".mtx")
 
-    # pname = string(matmeta.group, "_", matmeta.name)
-    # path = fetch_ssmc(matmeta.group, matmeta.name; format="MM")
-    # file = joinpath(path, matmeta.name * ".mtx")
 
-    # println("------- (", i, "/", num_convex, ")  name = ", pname, " -------")
 
     # read matrix
     A = MatrixMarket.mmread(file)
     # A = MatrixMarket.mmread("matrices/mesh2em5/mesh2em5.mtx")
-    A = Symmetric(A)
+    A = Symmetric(sparse(T.(A)))   
 
     n, n = size(A)
-    b = ones(n) ./ √n
+    b = T.(ones(n)) ./ sqrt(T(n))
 
     convex_results = Dict()
 
@@ -250,32 +255,99 @@ function test_on_matrix(group, name, solvers)
 
         println("solver = ", solver, "  |  mem = ", mem)
 
-        # try
-            # perform blank run for the first iteration for accurate elapsed time measurement
-            # if i == 1
-            #     _ = benchmark_krylov(A, b, solver=solver, mem=mem)
-            # end
+        df = benchmark_krylov(A, b, solver=solver, mem=mem)
 
-            df = benchmark_krylov(A, b, solver=solver, mem=mem)
+        # save data to .csv file
+        result_file = joinpath(directory, string(pname, "_", solver_name, ".csv"))
+        CSV.write(result_file, df)
 
-            # save data to .csv file
-            result_file = joinpath(directory, string(pname, "_", solver_name, ".csv"))
-            CSV.write(result_file, df)
+        convex_results[solver_name] = df
 
-            convex_results[solver_name] = df
-
-        # catch err
-        #     # println("Caught error thrown at $(err.file):$(err.line)")
-        #     println("error ", err)
-        # end
     end
 
     plot_path = joinpath(directory, "$pname.pdf")
     plot_name = pname
     convex_dim = n
-    convex_cond = cond(Array(A), 2)
-    draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_results)
+    convex_cond = cond(Array(Float64.(A)), 2)
+    draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_results, T)
 
+end
+
+
+
+function collect_spd_matrices_all(;
+        nmin::Int=100,
+        nmax::Int=2000,
+        kappa_max::Float64=1e10,
+        max_matrices::Int=50,
+        eig_tol::Float64=1e-6)
+
+    println("Loading SuiteSparse metadata...")
+    db = ssmc_db()
+
+    # --- Filtrage metadata initial ---
+    sel = db[
+        (db.real .== true) .&
+        (db.numerical_symmetry .== 1) .&
+        (db.positive_definite .== true) .&
+        (db.nrows .>= nmin) .&
+        (db.nrows .<= nmax),
+        :
+    ]
+
+    println("Metadata SPD candidates found: ", size(sel,1))
+
+    results = []
+
+    for row in eachrow(sel)
+
+        try
+            println("\nTesting $(row.group)/$(row.name)")
+
+            # téléchargement
+            path = fetch_ssmc(row.group, row.name; format="MM")
+            file = joinpath(path, row.name * ".mtx")
+
+            # lecture
+            A = MatrixMarket.mmread(file)
+            A = Symmetric(sparse(Float64.(A)))
+            n = size(A,1)
+
+            # estimation λmax
+            λmax = eigs(A, nev=1, which=:LM, tol=eig_tol)[1][1]
+
+            # estimation λmin
+            λmin = eigs(A, nev=1, which=:SM, tol=eig_tol)[1][1]
+
+            if λmin <= 0
+                println("  -> rejected (not numerically SPD)")
+                continue
+            end
+
+            κ = abs(λmax / λmin)
+
+            @printf("  dim = %d | κ ≈ %.3e\n", n, κ)
+
+            if κ < kappa_max
+                push!(results, (
+                    group = row.group,
+                    name = row.name,
+                    n = n,
+                    kappa = κ
+                ))
+            end
+
+            if length(results) >= max_matrices
+                break
+            end
+
+        catch err
+            println("  -> error: ", err)
+        end
+    end
+
+    println("\nAccepted matrices: ", length(results))
+    return results
 end
 
 
@@ -284,104 +356,82 @@ function benchmark_krylov(A, b; solver = :cg, mem=nothing)
     n, n = size(A)
 
     objectives = Float64[0.0]
-    elapsed_time = Float64[0.0]
+    #elapsed_time = Float64[0.0]
 
     # compute quadratic objective
     function compute_obj(x, A, g)
-        return dot(g, x) + 0.5 * dot(x, A*x)
+        return -dot(g, x) + 0.5 * dot(x, A*x)
     end
 
     function objective_callback(workspace)
         push!(objectives, compute_obj(workspace.x, A, b))
-        timing_callback(workspace)
         return false
     end
 
-    
-    function timing_callback(workspace)
-        push!(elapsed_time, time() - start_time)
-        return false
-    end
 
     if solver == :cg
-        krylov_solver = krylov_workspace(Val(solver), A, -b)
+        krylov_solver = krylov_workspace(Val(solver), A, b)
     elseif solver == :diom
-        krylov_solver = krylov_workspace(Val(solver), A, -b, memory=mem)
+        krylov_solver = krylov_workspace(Val(solver), A, b, memory=mem)
     elseif solver == :lbfgs
         n, n = size(A)
         krylov_solver = lbfgs_workspace(Val(solver), n, typeof(b), mem=mem, scaling=false)
     end
 
-    start_time = time()
 
     # perform problem's first trial. Save objective values
     
-    krylov_solve!(krylov_solver, A, -b; ldiv=false, itmax=2*n, history=true, callback=objective_callback, atol=1e-6, rtol=1e-6) # itmax=10*n
+    krylov_solve!(krylov_solver, A, b; itmax=2*n, history=true, atol=eltype(b)(1e-6), rtol=eltype(b)(1e-6)) # itmax=10*n
 
     println("krylov solve done")
 
     stats = krylov_solver.stats
 
-    first_res = copy(stats.residuals)
-    
-    if solver == :cg
-        krylov_solver = krylov_workspace(Val(solver), A, -b)
-    elseif solver == :diom
-        krylov_solver = krylov_workspace(Val(solver), A, -b, memory=mem)
-    elseif solver == :lbfgs
-        n, n = size(A)
-        krylov_solver = lbfgs_workspace(Val(solver), n, typeof(b), mem=mem)
-    end
-
-    elapsed_time = Float64[0.0]
-    start_time = time()
-
-    # perform peroblem' second trial. Measure elapsed time. Do not save objective values.
-    krylov_solve!(krylov_solver, A, -b; ldiv=false, itmax=2*n, history=true, callback=timing_callback, atol=1e-6, rtol=1e-6)
-    stats = krylov_solver.stats
-
-    if length(first_res) != length(stats.residuals)
-        throw(string("First and second run residuals do not have the same dimensions: ", length(first_res), " vs ", length(stats.residuals), "."))
-    end
-    error = norm(first_res .- stats.residuals)
-    if error > sqrt(eps())
-        throw("Residual mismatch between first and second run.")
-    end
-
     df = DataFrame(
         residuals = stats.residuals,
-        objectives = objectives,
-        elapsed_time = elapsed_time
+        objectives = stats.quadras,
     )
 
     return df
 end
 
 
-function draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_data)
+function draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_data, T)
 
     # change default linewidth -> does not work
     # plt.rcParams["lines.linewidth"] = 0.25
     # println("New default linewidth: ", plt.rcParams["lines.linewidth"])
+    if T == Float64
+        prec_str = "Float64"
+    elseif T == BigFloat
+        prec_str = "BigFloat $(precision(BigFloat)) bits"
+    else
+        prec_str = string(T)
+    end
 
+    
     sorted_keys = sort(collect(keys(convex_data)))
 
     fig, ax = plt.subplots(1, 2, figsize=(8, 4))
 
     convex_cond = @sprintf("%.3E", convex_cond)
 
-    suptitle = string(plot_name, "\n dim = ", convex_dim, "; cond = ", convex_cond)
+    suptitle = string(
+        plot_name,
+        "\n dim = ", convex_dim,
+        "; cond = ", convex_cond,
+        "; prec = ", prec_str
+    )
 
     fig.suptitle(suptitle)
 
     for key in sorted_keys
         dict = convex_data[key]
-        residuals = dict.residuals
-        objectives = dict.objectives
+        residuals = Float64.(dict.residuals)
+        objectives = Float64.(dict.objectives)
 
         ax[1].plot(residuals, linewidth=0.5, label=key)
         ax[2].plot(objectives, linewidth=0.5)
-
     end
 
     ax[1].set_xlabel("Iteration")
@@ -402,24 +452,51 @@ end
 
 solvers = [
     (:cg, nothing, "cg"),
-    (:diom, 100, "diom_100"),
-    (:diom, 200, "diom_200"),
-    (:lbfgs, 50, "lbfgs_50"),
-    (:lbfgs, 100, "lbfgs_100"),
-    (:lbfgs, 200, "lbfgs_200"),
+    (:diom, 50, "diom_100"),
+    (:diom, 100, "diom_200"),
+    (:lbfgs, 25, "lbfgs_50"),
+    (:lbfgs, 50, "lbfgs_100"),
+    (:lbfgs, 100, "lbfgs_200"),
 ]
 
-# dimension ~ 1000
-# test_on_matrix("HB", "bcsstk09", solvers)   # low cond number E^3
-# test_on_matrix("HB", "bcsstm08", solvers)   # medium cond number E^6
-# test_on_matrix("HB", "nos2", solvers)       # high cond number E^9
+
+# Test on matrcies with different precisions
 
 
-# test_on_matrix("Pothen", "mesh2em5", solvers)   # low cond number E^2
-test_on_matrix("Boeing", "bcsstk34", solvers)   # medium cond number E^4
-# test_on_matrix("HB", "494_bu", solvers)       # high cond number E^6
+#mats = collect_spd_matrices_all(
+#    nmin = 100,
+#    nmax = 3000,
+#    kappa_max = 1e10,
+#    max_matrices = 50
+#)
 
-# test_on_matrix("HB", "bcsstm07", solvers)   # low cond number E^3
-# test_on_matrix("HB", "494_bus", solvers)   # medium cond number E^6
-# test_on_matrix("HB", "plat362", solvers)       # high cond number E^9
+#println("Running in precision ", Float64)
+#for M in mats
+#    test_on_matrix(M.group, M.name, solvers, Float64)
+#end
+# --------------------
+#setprecision(BigFloat, 128)
+#println("Running in precision ", BigFloat)
+#for M in mats
+#    test_on_matrix(M.group, M.name, solvers, BigFloat; precision_bits=128)
+#end
+# --------------------
+#setprecision(BigFloat, 256)
 
+#println("Running in precision ", BigFloat)
+#for M in mats
+#    test_on_matrix(M.group, M.name, solvers, BigFloat; precision_bits=256)
+#end
+
+
+test_on_matrix("Pothen", "mesh2em5", solvers, Float64)
+test_on_matrix("Pothen", "mesh2em5", solvers, BigFloat; precision_bits=128)
+test_on_matrix("Pothen", "mesh2em5", solvers, BigFloat; precision_bits=256)
+
+test_on_matrix("HB", "bcsstk34", solvers, Float64)
+test_on_matrix("HB", "bcsstk34", solvers, BigFloat; precision_bits=128)
+test_on_matrix("HB", "bcsstk34", solvers, BigFloat; precision_bits=256)
+
+test_on_matrix("HB", "494_bus", solvers, Float64)
+test_on_matrix("HB", "494_bus", solvers, BigFloat; precision_bits=128)
+test_on_matrix("HB", "494_bus", solvers, BigFloat; precision_bits=256)
