@@ -1,36 +1,38 @@
 using Pkg
 
-Pkg.activate("env")
+Pkg.activate("test_diom_tr")
 
-required_packages = [
+packages = [
+    # "SuiteSparseMatrixCollection",
+    # "MatrixMarket",
+    "SparseArrays",
     "LinearAlgebra",
-    "LinearOperators",
+    "CSV",
+    "DataFrames",
     "Printf",
-    "NLPModels",
-    "ADNLPModels",
+    # "Conda",
+    "LinearOperators",
     "OptimizationProblems",
     "SolverTools",
     "SolverCore",
     "SolverBenchmark",
+    "NLPModels",
+    "ADNLPModels",
+    "NLPModelsIpopt",
     "JLD2",
     "Plots",
-    "ArgParse",
 ]
 
-function ensure_pkg(pkg::String)
-    if !haskey(Pkg.project().dependencies, pkg)
-        Pkg.add(pkg)
-    end
-end
-
-for pkg in required_packages
-    ensure_pkg(pkg)
+for pkg in packages
+    println("Adding: ", pkg)
+    Pkg.add(pkg)
 end
 
 # # install matplotlib and PyPlot
-# using Conda
-# Conda.add("matplotlib")
-# Pkg.add("PyPlot")
+# # using Conda
+# # Conda.add("matplotlib")
+# # Pkg.add("PyPlot")
 
-# install Krylov local fork
-Pkg.develop(path="Krylov.jl")      # adjust path if required
+# # install Krylov local fork
+# Pkg.develop(path="/home/oicor/Krylov.jl")           # adjust path if required
+# Pkg.develop(path="/home/oicor/JSOSolvers.jl")       # adjust path if required
