@@ -1,36 +1,36 @@
 using Pkg
 
-Pkg.activate("test_diom_tr")
+Pkg.activate("env")
 
-packages = [
-    "SuiteSparseMatrixCollection",
-    "MatrixMarket",
-    "SparseArrays",
+required_packages = [
     "LinearAlgebra",
-    "CSV",
-    "DataFrames",
+    "LinearOperators",
     "Printf",
-    "Conda",
-    "PyCall"
+    "NLPModels",
+    "ADNLPModels",
+    "OptimizationProblems",
+    "SolverTools",
+    "SolverCore",
+    "SolverBenchmark",
+    "JLD2",
+    "Plots",
+    "ArgParse",
 ]
 
-for pkg in packages
-    try
+function ensure_pkg(pkg::String)
+    if !haskey(Pkg.project().dependencies, pkg)
         Pkg.add(pkg)
-    catch err
-        @warn "Failed to add $pkg" exception=(err, catch_backtrace())
     end
 end
 
+for pkg in required_packages
+    ensure_pkg(pkg)
+end
 
-using Conda
-Conda.add("python=3.11")
-Conda.add("matplotlib=3.10.0")
-
-ENV["PYTHON"] = ""
-Pkg.build("PyCall")
-
-Pkg.add("PyPlot")
+# # install matplotlib and PyPlot
+# using Conda
+# Conda.add("matplotlib")
+# Pkg.add("PyPlot")
 
 # install Krylov local fork
 Pkg.develop(path="Krylov.jl")      # adjust path if required

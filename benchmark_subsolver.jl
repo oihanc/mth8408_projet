@@ -1,6 +1,6 @@
 using Pkg
 Pkg.activate("test_diom_tr")
-Pkg.develop(path="/home/corde/Krylov.jl")   # change path to local Krylov fork
+Pkg.develop(path="../Krylov.jl")   # change path to local Krylov fork
 
 # Pkg.add("LinearOperators")
 # Pkg.add("JLD2")
