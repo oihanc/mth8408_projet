@@ -1,7 +1,3 @@
-
-
-
-
 # --- activating environment ---
 using Pkg
 Pkg.activate("env")
@@ -58,7 +54,9 @@ function main()
         # :ipopt => nlp -> ipopt(nlp, print_level=0),
         :trunk_cg => nlp -> trunk(nlp, verbose=0),
         # :trunk_diom_2 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=2,)),
-        :trunk_diom_50 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=50,)),
+        # :trunk_diom_50 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=50,)),
+        :trunk_diom_100 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=100,)),
+        :trunk_diom_200 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=200,)),
     )
 
     stats = bmark_solvers(solvers, problems)
