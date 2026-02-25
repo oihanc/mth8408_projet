@@ -1,12 +1,7 @@
 # --- activating environment ---
 using Pkg
-Pkg.activate("env")
+Pkg.activate("../env")
 
-
-# Pkg.develop(path="/home/corde/Krylov.jl")
-# Pkg.develop(path="/home/corde/JSOSolvers.jl")
-
-# Pkg.add("ArgParse")
 using ArgParse
 
 using LinearAlgebra, NLPModels, ADNLPModels, Printf, LinearOperators, Krylov
@@ -54,14 +49,13 @@ function main()
         # :ipopt => nlp -> ipopt(nlp, print_level=0),
         :trunk_cg => nlp -> trunk(nlp, verbose=0),
         # :trunk_diom_2 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=2,)),
-        # :trunk_diom_50 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=50,)),
+        :trunk_diom_50 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=50,)),
         :trunk_diom_100 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=100,)),
-        :trunk_diom_200 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=200,)),
+        # :trunk_diom_200 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=200,)),
     )
 
     stats = bmark_solvers(solvers, problems)
 
-    parent_dir = joinpath("r", "")
     @save "stats_dim_$(N).jld2" stats
 
     performance_profile(stats, df -> df.neval_hprod)
