@@ -200,7 +200,6 @@ function lbfgs_workspace(::Val{:lbfgs}, n::Int, V::Type{<:AbstractVector}; mem=5
     return LBFGSWorkspace{eltype(V), eltype(V), V}(n, mem; scaling=scaling)
 end
 
-# println(methods(krylov_solve!))
 
 function test_on_matrix(group, name, solvers, T;
                         precision_bits::Int = 0)
@@ -250,22 +249,30 @@ function test_on_matrix(group, name, solvers, T;
     for sol in solvers
         
         solver = sol[1]
-        mem = sol[2]
-        solver_name = sol[3]
+        mem_spec = sol[2]
+        label_spec = sol[3]
 
-        println("solver = ", solver, "  |  mem = ", mem)
+        mem = mem_spec isa Function ? mem_spec(n) : mem_spec
+        solver_label = label_spec isa Function ? label_spec(n) : label_spec
+
+        println("solver = ", solver, " | mem = ", mem)
 
         df = benchmark_krylov(A, b, solver=solver, mem=mem)
 
-        # save data to .csv file
-        result_file = joinpath(directory, string(pname, "_", solver_name, ".csv"))
+        result_file = joinpath(directory,
+            string(pname, "_", solver_label, ".csv"))
         CSV.write(result_file, df)
 
-        convex_results[solver_name] = df
-
+        convex_results[string(solver_label)] = df
     end
+    prec_number =
+    T == Float64  ? 64  :
+    T == Float32  ? 32  :
+    T == BigFloat ? precision(BigFloat) :
+    0
 
-    plot_path = joinpath(directory, "$pname.pdf")
+    plot_path = joinpath(directory, "$(pname)_$(prec_number).pdf")
+
     plot_name = pname
     convex_dim = n
     convex_cond = cond(Array(Float64.(A)), 2)
@@ -355,20 +362,6 @@ function benchmark_krylov(A, b; solver = :cg, mem=nothing)
 
     n, n = size(A)
 
-    objectives = Float64[0.0]
-    #elapsed_time = Float64[0.0]
-
-    # compute quadratic objective
-    function compute_obj(x, A, g)
-        return -dot(g, x) + 0.5 * dot(x, A*x)
-    end
-
-    function objective_callback(workspace)
-        push!(objectives, compute_obj(workspace.x, A, b))
-        return false
-    end
-
-
     if solver == :cg
         krylov_solver = krylov_workspace(Val(solver), A, b)
     elseif solver == :diom
@@ -381,7 +374,7 @@ function benchmark_krylov(A, b; solver = :cg, mem=nothing)
 
     # perform problem's first trial. Save objective values
     
-    krylov_solve!(krylov_solver, A, b; itmax=2*n, history=true, atol=eltype(b)(1e-6), rtol=eltype(b)(1e-6)) # itmax=10*n
+    krylov_solve!(krylov_solver, A, b; itmax=2*n, history=true, atol=eltype(b)(1e-8), rtol=eltype(b)(1e-8)) # itmax=10*n
 
     println("krylov solve done")
 
@@ -417,10 +410,10 @@ function draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_data, T
     convex_cond = @sprintf("%.3E", convex_cond)
 
     suptitle = string(
-        plot_name,
-        "\n dim = ", convex_dim,
-        "; cond = ", convex_cond,
-        "; prec = ", prec_str
+    plot_name,
+    "\n \$n = ", convex_dim,
+    "\$, \$\\kappa_2(A) = ", convex_cond,
+    "\$, precision = ", prec_str
     )
 
     fig.suptitle(suptitle)
@@ -434,14 +427,14 @@ function draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_data, T
         ax[2].plot(objectives, linewidth=0.5)
     end
 
-    ax[1].set_xlabel("Iteration")
-    ax[1].set_ylabel("Residuals")
+    ax[1].set_xlabel(L"Iteration $k$")
+    ax[1].set_ylabel(L"$\|g_k\|_2 / \|g_0\|_2$")
     ax[1].set_yscale("log")
 
-    ax[2].set_xlabel("Iteration")
-    ax[2].set_ylabel("Objective value")
+    ax[2].set_xlabel(L"Iteration $k$")
+    ax[2].set_ylabel(L"$f(x_k)$")
 
-    ax[1].legend()
+    ax[1].legend(fontsize=8)
 
     plt.tight_layout()
     plt.savefig(plot_path, dpi=600)
@@ -451,12 +444,12 @@ end
 
 
 solvers = [
-    (:cg, nothing, "cg"),
-    (:diom, 50, "diom_100"),
-    (:diom, 100, "diom_200"),
-    (:lbfgs, 25, "lbfgs_50"),
-    (:lbfgs, 50, "lbfgs_100"),
-    (:lbfgs, 100, "lbfgs_200"),
+    (:cg, nothing, L"\mathrm{CG}"),
+    (:diom, 50, L"\mathrm{DIOM}(m=50)"),
+    (:diom, n -> Int(n), L"\mathrm{DIOM}(m=n)"),
+    (:lbfgs, 25,  L"\mathrm{LBFGS}(m=25)"),
+    (:lbfgs, 50, L"\mathrm{LBFGS}(m=50)"),
+    (:lbfgs, n -> Int(n), L"\mathrm{LBFGS}(m=n)"),
 ]
 
 
@@ -466,8 +459,8 @@ solvers = [
 #mats = collect_spd_matrices_all(
 #    nmin = 100,
 #    nmax = 3000,
-#    kappa_max = 1e10,
-#    max_matrices = 50
+#    kappa_max = 1e15,
+#    max_matrices = 200
 #)
 
 #println("Running in precision ", Float64)
@@ -485,18 +478,21 @@ solvers = [
 
 #println("Running in precision ", BigFloat)
 #for M in mats
-#    test_on_matrix(M.group, M.name, solvers, BigFloat; precision_bits=256)
 #end
 
-
-test_on_matrix("Pothen", "mesh2em5", solvers, Float64)
-test_on_matrix("Pothen", "mesh2em5", solvers, BigFloat; precision_bits=128)
-test_on_matrix("Pothen", "mesh2em5", solvers, BigFloat; precision_bits=256)
-
-test_on_matrix("HB", "bcsstk34", solvers, Float64)
-test_on_matrix("HB", "bcsstk34", solvers, BigFloat; precision_bits=128)
-test_on_matrix("HB", "bcsstk34", solvers, BigFloat; precision_bits=256)
 
 test_on_matrix("HB", "494_bus", solvers, Float64)
 test_on_matrix("HB", "494_bus", solvers, BigFloat; precision_bits=128)
 test_on_matrix("HB", "494_bus", solvers, BigFloat; precision_bits=256)
+
+test_on_matrix("HB", "bcsstk05", solvers, Float64)
+test_on_matrix("HB", "bcsstk05", solvers, BigFloat; precision_bits=128)
+test_on_matrix("HB", "bcsstk05", solvers, BigFloat; precision_bits=256)
+
+#test_on_matrix("HB", "bcsstm09", solvers, Float64)
+#test_on_matrix("HB", "bcsstm09", solvers, BigFloat; precision_bits=128)
+#test_on_matrix("HB", "bcsstm09", solvers, BigFloat; precision_bits=256)
+
+test_on_matrix("HB", "gr_30_30", solvers, Float64)
+test_on_matrix("HB", "gr_30_30", solvers, BigFloat; precision_bits=128)
+test_on_matrix("HB", "gr_30_30", solvers, BigFloat; precision_bits=256)
