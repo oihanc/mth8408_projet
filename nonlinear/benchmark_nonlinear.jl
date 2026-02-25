@@ -37,11 +37,12 @@ function main()
 
     if N != 0
         problem_names = meta[(meta.ncon .== 0) .& .!meta.has_bounds .& (meta.variable_nvar .== true) .& (meta.minimize.==true), :name]
+        problems = (eval(Meta.parse(problem))(n=N) for problem ∈ problem_names)
     else
         problem_names = meta[(meta.ncon .== 0) .& .!meta.has_bounds .& (50 .<= meta.nvar) .& (meta.minimize.==true), :name]
+        problems = (eval(Meta.parse(problem))() for problem ∈ problem_names)
     end
-
-    problems = (eval(Meta.parse(problem))(n=N) for problem ∈ problem_names)
+    
 
     println("--> Problem found:    $(length(problem_names))")
 
@@ -49,8 +50,9 @@ function main()
         # :ipopt => nlp -> ipopt(nlp, print_level=0),
         :trunk_cg => nlp -> trunk(nlp, verbose=0),
         # :trunk_diom_2 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=2,)),
+        :trunk_diom_20 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=20,)),
         :trunk_diom_50 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=50,)),
-        :trunk_diom_100 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=100,)),
+        #:trunk_diom_100 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=100,)),
         # :trunk_diom_200 => nlp -> trunk(nlp, verbose=0, subsolver=:diom, subsolver_kwargs=(memory=200,)),
     )
 
