@@ -18,10 +18,10 @@ using Printf
 using LinearOperators
 
 
-mutable struct LBFGSStats
+mutable struct LBFGSStats{T}
     niter::Int
-    residuals::Vector{Float64}
-    quadras::Vector{Float64}
+    residuals::Vector{T}
+    quadras::Vector{T}
 end
 
 
@@ -38,7 +38,7 @@ mutable struct LBFGSWorkspace{T, FC <: T, S <: AbstractVector{T}} <: KrylovWorks
     sk::AbstractVector{T}   # step update
     yk::AbstractVector{T}   # gradient update
     x::AbstractVector{T}    # solution vector
-    stats::Union{Nothing, LBFGSStats}
+    stats::Union{Nothing, LBFGSStats{T}}
 
     function LBFGSWorkspace{T,FC,S}(n::Int, mem::Int; scaling::Bool=false) where {T, FC<:T, S<:AbstractVector{T}}
         Hk = InverseLBFGSOperator(T, n, mem=mem; scaling=scaling)
@@ -50,7 +50,7 @@ mutable struct LBFGSWorkspace{T, FC <: T, S <: AbstractVector{T}} <: KrylovWorks
         sk = zeros(T, n)
         yk = zeros(T, n)
         x = zeros(T, n)
-        stats = LBFGSStats(0, Float64[], Float64[])     # Review
+        stats = LBFGSStats{T}(0, T[], T[])     
         return new{T,FC,S}(n, n, mem, Hk, x0, pk, gk, dk, bk, sk, yk, x, stats)
     end
 end
@@ -242,8 +242,7 @@ function test_on_matrix(group, name, solvers, T;
     A = Symmetric(sparse(T.(A)))   
 
     n, n = size(A)
-    b = T.(ones(n)) ./ sqrt(T(n))
-
+    b = T.(ones(n)) #./ sqrt(T(n))
     convex_results = Dict()
 
     for sol in solvers
@@ -257,7 +256,7 @@ function test_on_matrix(group, name, solvers, T;
 
         println("solver = ", solver, " | mem = ", mem)
 
-        df = benchmark_krylov(A, b, solver=solver, mem=mem)
+        df = benchmark_krylov(A, b, solver=solver, T=T, mem=mem)
 
         result_file = joinpath(directory,
             string(pname, "_", solver_label, ".csv"))
@@ -358,9 +357,10 @@ function collect_spd_matrices_all(;
 end
 
 
-function benchmark_krylov(A, b; solver = :cg, mem=nothing)
+function benchmark_krylov(A, b; solver = :cg, T, mem=nothing)
 
     n, n = size(A)
+    nrmb = norm(b)
 
     if solver == :cg
         krylov_solver = krylov_workspace(Val(solver), A, b)
@@ -374,14 +374,14 @@ function benchmark_krylov(A, b; solver = :cg, mem=nothing)
 
     # perform problem's first trial. Save objective values
     
-    krylov_solve!(krylov_solver, A, b; itmax=2*n, history=true, atol=eltype(b)(1e-8), rtol=eltype(b)(1e-8)) # itmax=10*n
+    krylov_solve!(krylov_solver, A, b; itmax=2*n, history=true, atol=eltype(b)(1e-6), rtol=eltype(b)(1e-6)) # itmax=10*n
 
     println("krylov solve done")
 
     stats = krylov_solver.stats
 
     df = DataFrame(
-        residuals = stats.residuals,
+        residuals = stats.residuals ./ nrmb,
         objectives = stats.quadras,
     )
 
@@ -417,9 +417,11 @@ function draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_data, T
     )
 
     fig.suptitle(suptitle)
-
     for key in sorted_keys
         dict = convex_data[key]
+        println("for", key,"type of residuals:", typeof(dict.residuals))
+        println("for", key,"type of objectives: ", typeof(dict.objectives))
+
         residuals = Float64.(dict.residuals)
         objectives = Float64.(dict.objectives)
 
@@ -489,9 +491,9 @@ test_on_matrix("HB", "bcsstk05", solvers, Float64)
 test_on_matrix("HB", "bcsstk05", solvers, BigFloat; precision_bits=128)
 test_on_matrix("HB", "bcsstk05", solvers, BigFloat; precision_bits=256)
 
-#test_on_matrix("HB", "bcsstm09", solvers, Float64)
-#test_on_matrix("HB", "bcsstm09", solvers, BigFloat; precision_bits=128)
-#test_on_matrix("HB", "bcsstm09", solvers, BigFloat; precision_bits=256)
+test_on_matrix("HB", "bcsstm09", solvers, Float64)
+test_on_matrix("HB", "bcsstm09", solvers, BigFloat; precision_bits=128)
+test_on_matrix("HB", "bcsstm09", solvers, BigFloat; precision_bits=256)
 
 test_on_matrix("HB", "gr_30_30", solvers, Float64)
 test_on_matrix("HB", "gr_30_30", solvers, BigFloat; precision_bits=128)
