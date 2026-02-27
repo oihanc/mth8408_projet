@@ -25,20 +25,24 @@ mutable struct LBFGSStats{T}
 end
 
 
-mutable struct LBFGSWorkspace{T, FC <: T, S <: AbstractVector{T}} <: KrylovWorkspace{T, FC, S}
+mutable struct LBFGSWorkspace{
+    T,
+    FC <: T,
+    S <: AbstractVector{T},
+    H <: AbstractLinearOperator{T}
+} <: KrylovWorkspace{T, FC, S}   
     n::Int      # dimension
     m::Int
     mem::Int    # memory
-    Hk  # Inverse LBFGS Operator
-    x0::AbstractVector{T}   # starting point
-    pk::AbstractVector{T}   # current point
-    gk::AbstractVector{T}   # gradient
-    dk::AbstractVector{T}   # search direction
-    bk::AbstractVector{T}
-    sk::AbstractVector{T}   # step update
-    yk::AbstractVector{T}   # gradient update
-    x::AbstractVector{T}    # solution vector
-    stats::Union{Nothing, LBFGSStats{T}}
+    Hk :: H
+    x0::S
+    pk::S
+    gk::S
+    dk::S
+    bk::S
+    sk::S
+    yk::S
+    stats::LBFGSStats{T}
 
     function LBFGSWorkspace{T,FC,S}(n::Int, mem::Int; scaling::Bool=false) where {T, FC<:T, S<:AbstractVector{T}}
         Hk = InverseLBFGSOperator(T, n, mem=mem; scaling=scaling)
@@ -49,9 +53,10 @@ mutable struct LBFGSWorkspace{T, FC <: T, S <: AbstractVector{T}} <: KrylovWorks
         bk = zeros(T, n)
         sk = zeros(T, n)
         yk = zeros(T, n)
-        x = zeros(T, n)
         stats = LBFGSStats{T}(0, T[], T[])     
-        return new{T,FC,S}(n, n, mem, Hk, x0, pk, gk, dk, bk, sk, yk, x, stats)
+        return new{T,FC,typeof(pk),typeof(Hk)}(
+        n, n, mem, Hk, x0, pk, gk, dk, bk, sk, yk, stats
+    )
     end
 end
 
@@ -105,7 +110,7 @@ function lbfgs_tr!(
     #resize!(ws.stats.residuals, 0)
     callback(ws)
     push!(ws.stats.residuals, sqrt(gnorm0_sq))
-    quadra = 0
+    quadra = zero(T)
     
     k = 0
     α = zero(T)
@@ -119,7 +124,7 @@ function lbfgs_tr!(
         # A d
         mul!(ws.bk, A, ws.dk)
 
-        quadra += 0.5*α*gkd
+        quadra += T(0.5)*α*gkd
         push!(ws.stats.quadras, quadra)
 
         dkbk = dot(ws.dk, ws.bk)
@@ -145,7 +150,8 @@ function lbfgs_tr!(
                 pksk = dot(ws.pk, ws.sk)
                 sk2  = dot(ws.sk, ws.sk)
                 τ = (-pksk + sqrt(pksk^2 + sk2*(radius^2 - dot(ws.pk,ws.pk)))) / sk2
-                return ws.pk .+ τ .* ws.sk, ws.stats
+                @. ws.pk = ws.pk + τ * ws.sk
+                return ws.pk, ws.stats
             end
         end
 
@@ -164,8 +170,6 @@ function lbfgs_tr!(
 
         push!(ws.stats.residuals, sqrt(gnorm_sq))
         push!(ws.Hk, ws.sk, ws.yk)
-
-        copyto!(ws.x, ws.pk)
 
         callback(ws)
     end
@@ -190,9 +194,9 @@ function krylov_solve!(
     kwargs...
 ) where {T}
 
-    x, stats = lbfgs_tr!(ws, A,  b, radius=radius, atol=atol, rtol=rtol, itmax=itmax, verbose=verbose, callback=callback)
+    pk, stats = lbfgs_tr!(ws, A,  b, radius=radius, atol=atol, rtol=rtol, itmax=itmax, verbose=verbose, callback=callback)
 
-    ws.x = x
+    ws.pk = pk
     ws.stats = stats
 end
 
@@ -424,11 +428,15 @@ function draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_data, T
 
         residuals = Float64.(dict.residuals)
         objectives = Float64.(dict.objectives)
-
+        ax[2].plot(objectives, linewidth=0.5, label=key)
         ax[1].plot(residuals, linewidth=0.5, label=key)
-        ax[2].plot(objectives, linewidth=0.5)
+        
     end
+    leg = ax[2].legend(fontsize=8)
 
+    for line in leg.get_lines()
+        line.set_linewidth(1.5)
+    end
     ax[1].set_xlabel(L"Iteration $k$")
     ax[1].set_ylabel(L"$\|g_k\|_2 / \|g_0\|_2$")
     ax[1].set_yscale("log")
@@ -436,7 +444,6 @@ function draw_plot(plot_path, plot_name, convex_dim, convex_cond, convex_data, T
     ax[2].set_xlabel(L"Iteration $k$")
     ax[2].set_ylabel(L"$f(x_k)$")
 
-    ax[1].legend(fontsize=8)
 
     plt.tight_layout()
     plt.savefig(plot_path, dpi=600)
@@ -480,21 +487,32 @@ solvers = [
 
 #println("Running in precision ", BigFloat)
 #for M in mats
+#    test_on_matrix(M.group, M.name, solvers, BigFloat; precision_bits=256)
 #end
 
+#using Quadmath   # si Float128 
+#sing InteractiveUtils
+#T = BigFloat
+#A = Symmetric(rand(T, 10,10))
+#b = rand(T, 10)
 
-test_on_matrix("HB", "494_bus", solvers, Float64)
-test_on_matrix("HB", "494_bus", solvers, BigFloat; precision_bits=128)
-test_on_matrix("HB", "494_bus", solvers, BigFloat; precision_bits=256)
+#ws = lbfgs_workspace(Val(:lbfgs), 10, typeof(b), mem=5)
 
-test_on_matrix("HB", "bcsstk05", solvers, Float64)
-test_on_matrix("HB", "bcsstk05", solvers, BigFloat; precision_bits=128)
-test_on_matrix("HB", "bcsstk05", solvers, BigFloat; precision_bits=256)
+#@code_warntype lbfgs_tr!(ws, A, b)
 
-test_on_matrix("HB", "bcsstm09", solvers, Float64)
-test_on_matrix("HB", "bcsstm09", solvers, BigFloat; precision_bits=128)
-test_on_matrix("HB", "bcsstm09", solvers, BigFloat; precision_bits=256)
+#test_on_matrix("HB", "494_bus", solvers, Float64)
+#test_on_matrix("HB", "494_bus", solvers, BigFloat; precision_bits=128)
+#test_on_matrix("HB", "494_bus", solvers, BigFloat; precision_bits=256)
+
+#test_on_matrix("HB", "bcsstk05", solvers, Float64)
+#test_on_matrix("HB", "bcsstk05", solvers, BigFloat; precision_bits=128)
+#test_on_matrix("HB", "bcsstk05", solvers, BigFloat; precision_bits=256)
+
+#test_on_matrix("HB", "nos5", solvers, Float64)
+#test_on_matrix("HB", "nos5", solvers, BigFloat; precision_bits=128)
+#test_on_matrix("HB", "nos5", solvers, BigFloat; precision_bits=256)
 
 test_on_matrix("HB", "gr_30_30", solvers, Float64)
 test_on_matrix("HB", "gr_30_30", solvers, BigFloat; precision_bits=128)
 test_on_matrix("HB", "gr_30_30", solvers, BigFloat; precision_bits=256)
+
