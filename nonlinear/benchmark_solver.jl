@@ -70,14 +70,14 @@ function main()
     if subsolver == "cg"
         solver_symbol = solver_symbol = Symbol("trunk_", subsolver)
         solvers = Dict(
-            solver_symbol => nlp -> trunk(nlp, verbose=0, max_time=max_time,),
+            solver_symbol => nlp -> trunk(nlp, verbose=0, max_time=max_time, atol=precision, rtol=precision),
         )
         res_path = joinpath(directory, "stats_$(subsolver).jld2")
     elseif subsolver in ["diom", "lbfgs"]
         solver_symbol = Symbol("trunk_", subsolver, "_", memory)
         
         solvers = Dict(
-            solver_symbol => nlp -> trunk(nlp, verbose=0, max_time=max_time, subsolver=subsolver_symb, subsolver_kwargs=(memory=memory,))
+            solver_symbol => nlp -> trunk(nlp, verbose=0, max_time=max_time, atol=precision, rtol=precision, subsolver=subsolver_symb, subsolver_kwargs=(memory=memory,))
         )
         res_path = joinpath(directory, "stats_$(subsolver)_mem$(memory).jld2")
     end
