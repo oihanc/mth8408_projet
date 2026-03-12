@@ -15,6 +15,9 @@ required_packages = [
     "JLD2",
     "Plots",
     "ArgParse",
+    "DataFrames",
+    "QPSReader",
+    "QuadraticModels",
 ]
 
 function ensure_pkg(pkg::String)
@@ -33,5 +36,5 @@ end
 # Pkg.add("PyPlot")
 
 # install Krylov local fork
-Pkg.develop(path="../Krylov.jl")           # adjust path if required
-Pkg.develop(path="../JSOSolvers.jl")       # adjust path if required
+Pkg.develop(path="/home/corde/Krylov.jl")           # adjust path if required
+Pkg.develop(path="/home/corde/JSOSolvers.jl")       # adjust path if required
