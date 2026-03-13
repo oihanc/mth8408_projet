@@ -1,0 +1,121 @@
+  Activating project at `~/mth8408_projet/env`
+[ Info: running solver trunk_diom_500
+[ Info:          Solver             Name    nvar    ncon           status    iter      Time      f(x)      Dual    Primal  
+[ Info:  trunk_diom_500             NZF1     988       0         not_desc     318   9.9e-01   3.4e+05   1.1e-05   0.0e+00
+[ Info:  trunk_diom_500          arglina    1000       0      first_order       5   3.8e-01   5.0e+02   9.6e-14   0.0e+00
+[ Info:  trunk_diom_500          arglinb    1000       0      first_order       1   2.7e-01   2.5e+02   5.2e+03   0.0e+00
+[ Info:  trunk_diom_500          arglinc    1000       0      first_order       1   2.7e-01   5.0e+02   2.3e+04   0.0e+00
+[ Info:  trunk_diom_500          argtrig    1000       0         not_desc     352   2.7e+00  -1.0e+06   2.9e-07   0.0e+00
+[ Info:  trunk_diom_500          arwhead    1000       0      first_order       6   2.7e-01   0.0e+00   1.1e-11   0.0e+00
+[ Info:  trunk_diom_500           auglag    1000       0      first_order      25   1.2e+00   1.1e+01   1.8e-11   0.0e+00
+[ Info:  trunk_diom_500          bdqrtic    1000       0      first_order      13   9.0e-01   2.0e+03   8.4e-09   0.0e+00
+[ Info:  trunk_diom_500         boundary    1000       0         max_time      19   2.4e+02   1.9e-08   3.7e-07   0.0e+00
+[ Info:  trunk_diom_500          brownal    1000       0      first_order       2   3.2e-01   1.9e-13   9.3e-07   0.0e+00
+[ Info:  trunk_diom_500        browngen1    1000       0      first_order      32   1.2e+00   9.8e+02   2.8e-02   0.0e+00
+[ Info:  trunk_diom_500        browngen2    1000       0      first_order       8   5.1e-01   2.0e-45   8.9e-23   0.0e+00
+[ Info:  trunk_diom_500        broyden3d    1000       0      first_order       8   5.9e-01   2.1e-25   3.3e-12   0.0e+00
+[ Info:  trunk_diom_500        broyden7d    1000       0      first_order       9   1.0e+00   3.4e+02   7.6e-10   0.0e+00
+[ Info:  trunk_diom_500         broydn7d    1000       0      first_order      85   2.3e+01   2.6e+02   1.5e-12   0.0e+00
+[ Info:  trunk_diom_500           brybnd    1000       0      first_order      10   8.2e-01   1.6e-24   1.4e-11   0.0e+00
+[ Info:  trunk_diom_500         chainwoo    1000       0      first_order     164   2.9e+01   9.5e+01   3.0e-11   0.0e+00
+[ Info:  trunk_diom_500     chnrosnb_mod    1000       0      first_order     778   1.8e+02   4.1e-19   6.8e-10   0.0e+00
+┌ Warning: clplatea: number of variables adjusted from 1000 to 961
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/clplatea.jl:10
+[ Info:  trunk_diom_500         clplatea     961       0      first_order       8   2.6e+00  -1.1e-02   1.0e-12   0.0e+00
+┌ Warning: clplateb: number of variables adjusted from 1000 to 961
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/clplateb.jl:10
+[ Info:  trunk_diom_500         clplateb     961       0         not_desc     305   2.1e+00  -5.3e-03   3.8e-10   0.0e+00
+┌ Warning: clplatec: number of variables adjusted from 1000 to 961
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/clplatec.jl:12
+[ Info:  trunk_diom_500         clplatec     961       0         not_desc     296   1.2e+01  -5.0e-03   4.9e-12   0.0e+00
+[ Info:  trunk_diom_500           cosine    1000       0         not_desc     317   3.0e-01  -1.0e+03   7.2e-08   0.0e+00
+[ Info:  trunk_diom_500         cragglvy    1000       0      first_order      16   1.1e+00   3.4e+02   1.4e-10   0.0e+00
+[ Info:  trunk_diom_500        cragglvy2    1000       0      first_order      19   1.3e+00   2.7e+02   3.9e-10   0.0e+00
+[ Info:  trunk_diom_500            curly    1000       0         not_desc     317   2.2e+01  -1.0e+05   8.1e-10   0.0e+00
+[ Info:  trunk_diom_500          curly10    1000       0         not_desc     317   2.2e+01  -1.0e+05   8.1e-10   0.0e+00
+[ Info:  trunk_diom_500          curly20    1000       0         not_desc     315   2.2e+01  -1.0e+05   4.1e-10   0.0e+00
+[ Info:  trunk_diom_500          curly30    1000       0         not_desc     331   2.1e+01  -1.0e+05   2.6e-09   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_efgh.jl:12
+[ Info:  trunk_diom_500         dixmaane     999       0      first_order      24   4.4e+00   1.0e+00   1.1e-12   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_efgh.jl:12
+[ Info:  trunk_diom_500         dixmaanf     999       0      first_order      17   3.7e+00   1.0e+00   1.1e-10   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_efgh.jl:12
+[ Info:  trunk_diom_500         dixmaang     999       0      first_order      17   3.8e+00   1.0e+00   1.3e-12   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_efgh.jl:12
+[ Info:  trunk_diom_500         dixmaanh     999       0      first_order      17   2.9e+00   1.0e+00   3.1e-09   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_ijkl.jl:12
+[ Info:  trunk_diom_500         dixmaani     999       0      first_order      27   5.1e+01   1.0e+00   3.8e-10   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_ijkl.jl:12
+[ Info:  trunk_diom_500         dixmaanj     999       0      first_order      38   5.5e+01   1.0e+00   5.4e-12   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_ijkl.jl:12
+[ Info:  trunk_diom_500         dixmaank     999       0      first_order      43   5.8e+01   1.0e+00   4.0e-11   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_ijkl.jl:12
+[ Info:  trunk_diom_500         dixmaanl     999       0      first_order      42   5.4e+01   1.0e+00   7.7e-10   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_mnop.jl:12
+[ Info:  trunk_diom_500         dixmaanm     999       0      first_order      10   7.1e+01   1.0e+00   6.1e-12   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_mnop.jl:12
+[ Info:  trunk_diom_500         dixmaann     999       0      first_order      22   8.1e+01   1.0e+00   1.4e-11   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_mnop.jl:12
+[ Info:  trunk_diom_500         dixmaano     999       0      first_order      50   1.5e+02   1.0e+00   9.0e-10   0.0e+00
+┌ Warning: dixmaan: number of variables adjusted to be a multiple of 3
+└ @ OptimizationProblems.ADNLPProblems ~/.julia/packages/OptimizationProblems/ZwzTS/src/ADNLPProblems/dixmaan_mnop.jl:12
+[ Info:  trunk_diom_500         dixmaanp     999       0      first_order      37   1.2e+02   1.0e+00   2.9e-11   0.0e+00
+[ Info:  trunk_diom_500         dixon3dq    1000       0      first_order      13   5.6e+00   0.0e+00   0.0e+00   0.0e+00
+[ Info:  trunk_diom_500          dqdrtic    1000       0      first_order       6   2.8e-01   1.2e-19   1.4e-09   0.0e+00
+[ Info:  trunk_diom_500           dqrtic    1000       0      first_order      31   4.1e-01   7.3e-03   2.0e-02   0.0e+00
+[ Info:  trunk_diom_500          edensch    1000       0      first_order       9   4.3e-01   6.0e+03   6.4e-10   0.0e+00
+[ Info:  trunk_diom_500              eg2    1000       0         not_desc     302   2.3e-01  -1.0e+03   6.0e-09   0.0e+00
+[ Info:  trunk_diom_500          engval1    1000       0         not_desc     317   3.2e-01   1.1e+03   4.0e-08   0.0e+00
+[ Info:  trunk_diom_500     errinros_mod    1000       0         not_desc     383   4.5e+00   4.0e+02   1.8e-06   0.0e+00
+[ Info:  trunk_diom_500         extrosnb    1000       0      first_order    8716   2.4e+02   6.9e-10   6.2e-09   0.0e+00
+[ Info:  trunk_diom_500         fletcbv2    1000       0         not_desc     294   1.1e+01  -5.0e-01   1.2e-12   0.0e+00
+[ Info:  trunk_diom_500     fletcbv3_mod    1000       0         not_desc     392   2.8e+00  -2.0e+03   1.0e-10   0.0e+00
+[ Info:  trunk_diom_500         fletchcr    1000       0      first_order     652   1.7e+01   2.9e-23   2.1e-11   0.0e+00
+[ Info:  trunk_diom_500         freuroth    1000       0         not_desc     327   7.2e-01   6.1e+04   1.7e-07   0.0e+00
+[ Info:  trunk_diom_500      genbroydenb    1000       0      first_order      16   3.9e+00   2.5e-16   7.0e-09   0.0e+00
+[ Info:  trunk_diom_500    genbroydentri    1000       0      first_order      16   1.4e+00   7.3e-18   7.0e-10   0.0e+00
+[ Info:  trunk_diom_500         genhumps    1000       0         max_time   10308   2.4e+02   3.5e+01   3.7e+01   0.0e+00
+[ Info:  trunk_diom_500          genrose    1000       0      first_order     455   1.7e+01   1.0e+00   1.1e-12   0.0e+00
+[ Info:  trunk_diom_500     genrose_nash    1000       0      first_order     544   1.2e+01   1.0e+00   1.3e-12   0.0e+00
+[ Info:  trunk_diom_500        indef_mod    1000       0         not_desc     532   5.1e+00  -9.9e+04   5.9e-09   0.0e+00
+[ Info:  trunk_diom_500         integreq    1000       0      first_order       5   6.8e+01   1.7e-25   5.9e-13   0.0e+00
+[ Info:  trunk_diom_500          liarwhd    1000       0      first_order      14   3.2e-01   3.8e-20   2.5e-08   0.0e+00
+[ Info:  trunk_diom_500           morebv    1000       0         max_time      22   2.4e+02   2.0e-07   5.0e-06   0.0e+00
+[ Info:  trunk_diom_500         nazareth    1000       0         not_desc     313   1.4e+00   7.6e+05   3.0e-07   0.0e+00
+[ Info:  trunk_diom_500            ncb20    1000       0      first_order      58   2.1e+01   9.2e+02   1.0e-12   0.0e+00
+[ Info:  trunk_diom_500           ncb20b    1000       0         not_desc     329   5.4e+01   1.7e+03   1.2e-09   0.0e+00
+[ Info:  trunk_diom_500         noncvxu2    1000       0      first_order     464   2.5e+01   2.3e+03   2.4e-11   0.0e+00
+[ Info:  trunk_diom_500         noncvxun    1000       0      first_order     337   8.2e+01   2.3e+03   8.0e-10   0.0e+00
+[ Info:  trunk_diom_500           nondia    1000       0      first_order       6   2.4e-01   3.0e-18   2.2e-10   0.0e+00
+[ Info:  trunk_diom_500         nondquar    1000       0      first_order    1001   5.6e+01   1.1e-09   3.4e-09   0.0e+00
+[ Info:  trunk_diom_500         penalty1    1000       0      first_order      31   5.0e-01   1.9e+00   5.8e+00   0.0e+00
+[ Info:  trunk_diom_500         penalty2    1000       0         not_desc     344   0.0e+00   1.4e+83   4.9e+38   0.0e+00
+[ Info:  trunk_diom_500         penalty3    1000       0      first_order      73   8.6e+00   3.5e+06   5.1e-06   0.0e+00
+[ Info:  trunk_diom_500         powellsg    1000       0      first_order      24   4.9e-01   1.4e-12   2.6e-09   0.0e+00
+[ Info:  trunk_diom_500            power    1000       0      first_order      23   9.4e-01   2.6e-05   1.7e-02   0.0e+00
+[ Info:  trunk_diom_500           quartc    1000       0      first_order      31   4.1e-01   7.3e-03   2.0e-02   0.0e+00
+[ Info:  trunk_diom_500          sbrybnd    1000       0         max_time     389   2.4e+02   1.5e+03   6.8e+03   0.0e+00
+[ Info:  trunk_diom_500         schmvett    1000       0      first_order      11   6.5e-01  -3.0e+03   4.9e-11   0.0e+00
+[ Info:  trunk_diom_500          scosine    1000       0         max_time     522   2.4e+02  -3.2e+02   3.0e+03   0.0e+00
+[ Info:  trunk_diom_500          sinquad    1000       0         not_desc     731   6.4e+00   4.1e-15   1.4e-08   0.0e+00
+[ Info:  trunk_diom_500         sparsine    1000       0      first_order      96   2.1e+02   2.7e-18   3.2e-08   0.0e+00
+[ Info:  trunk_diom_500         sparsqur    1000       0      first_order      23   9.3e-01   1.0e-11   2.9e-08   0.0e+00
+[ Info:  trunk_diom_500         spmsrtls    1000       0         not_desc     306   4.6e+00   1.6e-22   1.7e-11   0.0e+00
+[ Info:  trunk_diom_500         srosenbr    1000       0      first_order      31   3.4e-01   1.0e-25   1.4e-11   0.0e+00
+[ Info:  trunk_diom_500         tointgss    1000       0      first_order       9   4.2e-01   1.0e+01   2.8e-11   0.0e+00
+[ Info:  trunk_diom_500         tquartic    1000       0         not_desc     299   2.8e-01   1.0e-19   2.9e-08   0.0e+00
+[ Info:  trunk_diom_500           tridia    1000       0      first_order       9   2.2e+00   3.3e-20   6.8e-09   0.0e+00
+[ Info:  trunk_diom_500           vardim    1000       0      first_order      23   5.1e-01   7.8e+05   1.9e+09   0.0e+00
+[ Info:  trunk_diom_500            woods    1000       0      first_order      43   6.9e-01   2.1e-21   2.0e-09   0.0e+00
+--> Problem found:    88
